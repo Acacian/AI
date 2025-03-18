@@ -5,7 +5,8 @@ sqlalchemy
 psycopg2-binary
 python-dotenv
 
-# Redis 캐싱
+# DB
+alembic
 redis
 
 # AI 및 데이터 분석
