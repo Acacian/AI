@@ -1,0 +1,16 @@
+# FastAPI 및 관련 필수 의존성
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary
+python-dotenv
+
+# Redis 캐싱
+redis
+
+# AI 및 데이터 분석
+numpy
+pandas
+
+# Finance
+ta
