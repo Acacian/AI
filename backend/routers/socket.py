@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 import threading
-from core.websocket_handler import (
+from core.socket import (
     start_binance_websocket
 )
 

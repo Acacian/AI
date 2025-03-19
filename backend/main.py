@@ -1,4 +1,4 @@
-import uvicorn, subprocess, asyncio
+import uvicorn, asyncio
 from dotenv import load_dotenv
 from fastapi import FastAPI
 
