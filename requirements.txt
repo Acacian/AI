@@ -13,12 +13,11 @@ alembic
 websocket-client
 redis
 
-# AI 및 데이터 분석(ta : RSI, MACD 등 계산 시 필요)
+# 데이터 분석
 numpy
 pandas
-ta
+ta  # 기술적 분석 라이브러리 (RSI, MACD, 볼린저 밴드 등)
 
-# GPU
-torch==2.2.0+cu126  -f https://download.pytorch.org/whl/torch_stable.html  # PyTorch (CUDA 12.6 지원)
-tensorflow==2.16.0  # TensorFlow (CPU/GPU 자동 선택)
-jax[cuda12_pip]  # JAX (머신러닝 가속)
+# ✅ GPU 가속 AI 라이브러리 (CUDA 12.6 지원)
+tensorflow==2.16.0  # TensorFlow (CUDA 12.6 자동 지원)
+jax[cuda12]  # 최신 JAX (CUDA 12.6 지원)
