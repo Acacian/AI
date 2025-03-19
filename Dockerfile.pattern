@@ -1,0 +1,38 @@
+FROM nvidia/cuda:12.6.0-runtime-ubuntu20.04
+
+WORKDIR /app
+
+ENV DEBIAN_FRONTEND=noninteractive 
+
+RUN apt-get update && apt-get install -y \
+    software-properties-common \
+    && add-apt-repository ppa:deadsnakes/ppa -y \
+    && apt-get update && apt-get install -y \
+    python3.10 python3.10-venv python3.10-dev python3.10-distutils \
+    python3-pip tzdata curl wget \
+    && ln -fs /usr/share/zoneinfo/Etc/UTC /etc/localtime \
+    && dpkg-reconfigure -f noninteractive tzdata \
+    && rm -rf /var/lib/apt/lists/*
+
+# ✅ python을 python3.10으로 강제 연결
+RUN ln -sf /usr/bin/python3.10 /usr/bin/python && \
+    ln -sf /usr/bin/python3.10 /usr/bin/python3
+
+# ✅ Python 버전 확인 (디버깅)
+RUN python --version
+
+# ✅ 기존 pip 제거 후 최신 pip 설치 (pip 24.0 이상 사용 가능)
+RUN apt-get remove -y python3-pip && \
+    curl -sS https://bootstrap.pypa.io/get-pip.py | python3.10 && \
+    python3.10 -m pip install --upgrade pip setuptools wheel
+
+# ✅ 최신 PyTorch 및 TensorFlow 설치 (CUDA 12.6 지원)
+RUN pip install --no-cache-dir torch --index-url https://download.pytorch.org/whl/cu126
+RUN pip install --no-cache-dir tensorflow==2.17.0 jax[cuda12_pip]
+
+# ✅ 패키지 의존성 설치
+COPY requirements.txt /app/
+RUN python -m pip install --no-cache-dir -r requirements.txt
+
+COPY ai_pattern /app/ai_pattern
+CMD ["python", "ai_pattern/serve.py"]

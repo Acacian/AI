@@ -10,16 +10,21 @@ services:
     env_file:
       - .env
     ports:
-      - "8000:8000"
+      - "8080:8080"
     networks:
       - ainet
-    restart: on-failure
+    restart: always
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
-  ai:
+  ai_data_mining:
     build:
       context: .
-      dockerfile: Dockerfile.gpu
-    container_name: ai-service
+      dockerfile: Dockerfile.data
+    container_name: ai-data-mining
     deploy:
       resources:
         reservations:
@@ -27,9 +32,62 @@ services:
             - driver: nvidia
               count: 1
               capabilities: [ gpu ]
+    ports:
+      - "8081:8081"
     networks:
       - ainet
-    restart: on-failure
+    restart: always
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import torch; print(torch.cuda.device_count())" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ai_pattern:
+    build:
+      context: .
+      dockerfile: Dockerfile.pattern
+    container_name: ai-pattern-analysis
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    ports:
+      - "8082:8082"
+    networks:
+      - ainet
+    restart: always
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import torch; print(torch.cuda.device_count())" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  ai_risk_manage:
+    build:
+      context: .
+      dockerfile: Dockerfile.risk
+    container_name: ai-risk-management
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    ports:
+      - "8083:8083"
+    networks:
+      - ainet
+    restart: always
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import torch; print(torch.cuda.device_count())" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
   redis:
     image: redis:7.0

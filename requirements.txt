@@ -19,5 +19,5 @@ pandas
 ta  # 기술적 분석 라이브러리 (RSI, MACD, 볼린저 밴드 등)
 
 # ✅ GPU 가속 AI 라이브러리 (CUDA 12.6 지원)
-tensorflow==2.16.0  # TensorFlow (CUDA 12.6 자동 지원)
-jax[cuda12]  # 최신 JAX (CUDA 12.6 지원)
+tensorflow==2.17.0  # TensorFlow (CUDA 12.6 자동 지원)
+jax[cuda12_pip]  # 최신 JAX (CUDA 12.6 지원)
