@@ -4,6 +4,7 @@ Backend(FastAPI 지원, WebSocket을 사용하며 /docs로 엔드포인트 확�
 AI(Data-Mining) : 8081
 AI(Pattern) : 8082
 AI(Risk-Manage) : 8083
+Kafka UI : 8088
 
 # Env
 
@@ -24,3 +25,7 @@ Binance_Secret :
 # 하드웨어 사용환경
 
 GPU를 사용하기 때문에 관련 하드웨어가 필수입니다. (현 개발환경 : NVIDIA RTX 4060 Ti/CUDA Version: 12.6)
+
+# 사용방법
+
+1. localhost:8080에서 엔드포인트 확인
