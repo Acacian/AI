@@ -1,0 +1,57 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: backend-aiport
+    depends_on:
+      redis:
+        condition: service_healthy
+    env_file:
+      - .env
+    ports:
+      - "8000:8000"
+    networks:
+      - ainet
+    restart: on-failure
+
+  ai:
+    build:
+      context: .
+      dockerfile: Dockerfile.gpu
+    container_name: ai-service
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    networks:
+      - ainet
+    restart: on-failure
+
+  redis:
+    image: redis:7.0
+    container_name: redis-aiport
+    ports:
+      - "6379:6379"
+    networks:
+      - ainet
+    restart: on-failure
+    command: >
+      redis-server --appendonly yes --auto-aof-rewrite-percentage 50 --auto-aof-rewrite-min-size 128mb
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+networks:
+  ainet:
+    driver: bridge
+
+volumes:
+  redis-data:
