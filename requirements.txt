@@ -12,6 +12,7 @@ alembic
 # Cache, Message
 websocket-client
 redis
+kafka
 
 # 데이터 분석
 numpy
