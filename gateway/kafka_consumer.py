@@ -1,17 +1,47 @@
-from kafka import KafkaConsumer
 import json
 import os
-from .triton_client import send_to_triton
+from kafka import KafkaConsumer
+from gateway.triton_client import send_to_triton
+from gateway.kafka_producer import send_message
 
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
 
-# 🔧 topic → model_name 매핑
+# 🔧 topic → 모델명 매핑 (Triton용)
 TOPIC_MODEL_MAP = {
     "ai_mining_1m": "ai_mining",
     "ai_mining_5m": "ai_mining",
     "ai_mining_15m": "ai_mining",
     "ai_mining_1h": "ai_mining",
-    "ai_mining_1d": "ai_mining"
+    "ai_mining_1d": "ai_mining",
+
+    "ai_pattern_1m": "ai_pattern",
+    "ai_pattern_5m": "ai_pattern",
+    "ai_pattern_15m": "ai_pattern",
+    "ai_pattern_1h": "ai_pattern",
+    "ai_pattern_1d": "ai_pattern",
+
+    "ai_risk_manage_1m": "ai_risk_manage",
+    "ai_risk_manage_5m": "ai_risk_manage",
+    "ai_risk_manage_15m": "ai_risk_manage",
+    "ai_risk_manage_1h": "ai_risk_manage",
+    "ai_risk_manage_1d": "ai_risk_manage",
+}
+
+# 🔁 topic → 다음 토픽 매핑 (에이전트 체인 전파용)
+NEXT_TOPIC_MAP = {
+    "ai_mining_1m": "ai_pattern_1m",
+    "ai_mining_5m": "ai_pattern_5m",
+    "ai_mining_15m": "ai_pattern_15m",
+    "ai_mining_1h": "ai_pattern_1h",
+    "ai_mining_1d": "ai_pattern_1d",
+
+    "ai_pattern_1m": "ai_risk_manage_1m",
+    "ai_pattern_5m": "ai_risk_manage_5m",
+    "ai_pattern_15m": "ai_risk_manage_15m",
+    "ai_pattern_1h": "ai_risk_manage_1h",
+    "ai_pattern_1d": "ai_risk_manage_1d",
+
+    # ai_risk_manage_* → 끝단 (다음 없음)
 }
 
 def get_kafka_consumer(topics):
@@ -25,8 +55,9 @@ def get_kafka_consumer(topics):
     )
 
 def consume_loop():
-    consumer = get_kafka_consumer(list(TOPIC_MODEL_MAP.keys()))
-    print("📥 Kafka Consumer 시작됨...")
+    topics = list(TOPIC_MODEL_MAP.keys())
+    consumer = get_kafka_consumer(topics)
+    print(f"📥 Kafka Consumer 구독 시작: {topics}")
 
     for msg in consumer:
         topic = msg.topic
@@ -34,8 +65,17 @@ def consume_loop():
 
         model_name = TOPIC_MODEL_MAP.get(topic)
         if not model_name:
-            print(f"⚠️ 처리할 모델 없음: {topic}")
+            print(f"⚠️ 알 수 없는 토픽: {topic}")
             continue
 
+        # Triton Inference
         result = send_to_triton(model_name, data)
-        print(f"✅ [{topic}] Triton 응답: {result}")
+        print(f"✅ [{topic}] → {model_name} 결과: {result}")
+
+        # 다음 에이전트로 메시지 전송
+        next_topic = NEXT_TOPIC_MAP.get(topic)
+        if next_topic:
+            send_message(next_topic, {"input": result[0]})
+            print(f"📤 결과 전송 → {next_topic}: {result[0]}")
+        else:
+            print(f"🔚 최종 단계 (다음 없음): {topic}")

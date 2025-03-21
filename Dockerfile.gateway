@@ -1,0 +1,23 @@
+FROM python:3.10-slim
+
+WORKDIR /app
+
+# requirements 복사 및 설치
+COPY requirements.txt /app/
+RUN pip install --no-cache-dir -r requirements.txt
+
+# gateway 및 스크립트 복사
+COPY gateway /app/gateway
+COPY scripts /app/scripts
+
+# 환경 변수 경로 설정
+ENV PYTHONPATH=/app/gateway
+
+# FastAPI 앱 실행 + 모델 자동 생성 (개별 실행으로 안정성 Up!)
+CMD ["sh", "-c", "\
+    mkdir -p /models/ai_mining/1 /models/ai_pattern/1 /models/ai_risk_manage/1; \
+    if [ ! -f /models/ai_mining/1/model.onnx ]; then python /app/scripts/export_mining_model.py; fi; \
+    if [ ! -f /models/ai_pattern/1/model.onnx ]; then python /app/scripts/export_pattern_model.py; fi; \
+    if [ ! -f /models/ai_risk_manage/1/model.onnx ]; then python /app/scripts/export_risk_model.py; fi; \
+    uvicorn gateway.main:app --host 0.0.0.0 --port 8080 \
+    "]

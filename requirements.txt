@@ -17,5 +17,7 @@ numpy
 pandas
 ta  # 기술적 분석 라이브러리 (RSI, MACD, 볼린저 밴드 등)
 
-# ✅ GPU 가속 AI 라이브러리 (CUDA 12.6 지원)
+# AI, 추론
 tritonclient[http]
+torch
+onnx

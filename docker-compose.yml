@@ -1,12 +1,27 @@
-version: '3.8'
-
 services:
+  model-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    container_name: model-generator
+    volumes:
+      - ./models:/models  # 모델 저장 경로
+    command: >
+      sh -c "python /app/scripts/export_mining_model.py &&
+             python /app/scripts/export_pattern_model.py &&
+             python /app/scripts/export_risk_model.py"
+    networks:
+      - ainet
+    restart: "no"  # 모델 생성 후 종료
+
   gateway:
     build:
       context: .
       dockerfile: Dockerfile.gateway
     container_name: gateway-aiport
     depends_on:
+      model-generator:
+        condition: service_completed_successfully  # 모델 생성 완료 후 실행
       triton:
         condition: service_healthy
       kafka:
@@ -27,6 +42,9 @@ services:
   triton:
     image: nvcr.io/nvidia/tritonserver:23.03-py3
     container_name: triton-inference
+    depends_on:
+      model-generator:
+        condition: service_completed_successfully
     deploy:
       resources:
         reservations:
@@ -35,12 +53,12 @@ services:
               count: 1
               capabilities: [gpu]
     volumes:
-      - ./models:/models 
+      - ./models:/models  
     command: ["tritonserver", "--model-repository=/models"]
     ports:
-      - "8000:8000"
-      - "8001:8001"
-      - "8002:8002"
+      - "8010:8000"  
+      - "8011:8001"  
+      - "8012:8002"
     networks:
       - ainet
     restart: always
@@ -54,7 +72,7 @@ services:
     image: redis:7.0
     container_name: redis-aiport
     ports:
-      - "6379:6379"
+      - "6380:6379"
     networks:
       - ainet
     restart: on-failure
@@ -98,10 +116,15 @@ services:
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
       KAFKA_CFG_ZOOKEEPER_CONNECT: "zookeeper:2181"
       ALLOW_PLAINTEXT_LISTENER: "yes"
-      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"  
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"
     restart: always
     volumes:
       - kafka-data:/var/lib/kafka/data 
+    healthcheck:
+      test: ["CMD", "kafka-topics.sh", "--bootstrap-server=localhost:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   kafka-ui:
     image: provectuslabs/kafka-ui
@@ -124,4 +147,4 @@ networks:
 
 volumes:
   redis-data:
-  kafka-data:  
+  kafka-data:
