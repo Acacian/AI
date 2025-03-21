@@ -1,0 +1,19 @@
+name: "ai_pattern"
+platform: "onnxruntime_onnx"
+max_batch_size: 0
+
+input [
+  {
+    name: "INPUT"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  }
+]
+
+output [
+  {
+    name: "OUTPUT"
+    data_type: TYPE_FP32
+    dims: [ 1 ]
+  }
+]

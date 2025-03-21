@@ -1,13 +1,13 @@
 version: '3.8'
 
 services:
-  app:
+  gateway:
     build:
       context: .
-      dockerfile: Dockerfile.api
-    container_name: backend-aiport
+      dockerfile: Dockerfile.gateway
+    container_name: gateway-aiport
     depends_on:
-      redis:
+      triton:
         condition: service_healthy
       kafka:
         condition: service_healthy
@@ -19,70 +19,36 @@ services:
       - ainet
     restart: always
     healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  ai_data_mining:
-    build:
-      context: .
-      dockerfile: Dockerfile.data
-    container_name: ai-data-mining
-    depends_on:
-      - kafka
+  triton:
+    image: nvcr.io/nvidia/tritonserver:23.03-py3
+    container_name: triton-inference
     deploy:
       resources:
         reservations:
           devices:
             - driver: nvidia
               count: 1
-              capabilities: [ gpu ]
+              capabilities: [gpu]
+    volumes:
+      - ./models:/models 
+    command: ["tritonserver", "--model-repository=/models"]
     ports:
-      - "8081:8081"
+      - "8000:8000"
+      - "8001:8001"
+      - "8002:8002"
     networks:
       - ainet
     restart: always
-
-  ai_pattern:
-    build:
-      context: .
-      dockerfile: Dockerfile.pattern
-    container_name: ai-pattern-analysis
-    depends_on:
-      - kafka
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [ gpu ]
-    ports:
-      - "8082:8082"
-    networks:
-      - ainet
-    restart: always
-
-  ai_risk_manage:
-    build:
-      context: .
-      dockerfile: Dockerfile.risk
-    container_name: ai-risk-management
-    depends_on:
-      - kafka
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [ gpu ]
-    ports:
-      - "8083:8083"
-    networks:
-      - ainet
-    restart: always
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v2/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   redis:
     image: redis:7.0
@@ -97,7 +63,7 @@ services:
     volumes:
       - redis-data:/data
     healthcheck:
-      test: [ "CMD", "redis-cli", "ping" ]
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
@@ -132,7 +98,10 @@ services:
       KAFKA_CFG_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
       KAFKA_CFG_ZOOKEEPER_CONNECT: "zookeeper:2181"
       ALLOW_PLAINTEXT_LISTENER: "yes"
+      KAFKA_CFG_AUTO_CREATE_TOPICS_ENABLE: "true"  
     restart: always
+    volumes:
+      - kafka-data:/var/lib/kafka/data 
 
   kafka-ui:
     image: provectuslabs/kafka-ui
@@ -145,7 +114,7 @@ services:
       - kafka
     environment:
       - KAFKA_CLUSTERS_0_NAME=local-cluster
-      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=localhost:29092 
       - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
     restart: always
 
@@ -155,4 +124,4 @@ networks:
 
 volumes:
   redis-data:
-  kafka-data:
+  kafka-data:  

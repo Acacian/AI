@@ -1,0 +1,19 @@
+name: "ai_mining"
+platform: "onnxruntime_onnx"  # ONNX 모델을 사용함
+max_batch_size: 0  # 배치 처리 안 함 (1개씩 요청)
+
+input [
+  {
+    name: "INPUT"
+    data_type: TYPE_FP32
+    dims: [ 1 ]  # 입력 차원 (1개 값)
+  }
+]
+
+output [
+  {
+    name: "OUTPUT"
+    data_type: TYPE_FP32
+    dims: [ 1 ]  # 출력 차원 (1개 값)
+  }
+]

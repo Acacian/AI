@@ -1,18 +1,16 @@
 # FastAPI 및 관련 필수 의존성
 fastapi
 uvicorn[standard]
-psycopg2-binary
 python-dotenv
 
 # DB
 sqlalchemy
 psycopg2-binary
 alembic
-
-# Cache, Message
-websocket-client
 redis
-kafka
+
+# Kafka
+kafka-python
 
 # 데이터 분석
 numpy
@@ -20,5 +18,4 @@ pandas
 ta  # 기술적 분석 라이브러리 (RSI, MACD, 볼린저 밴드 등)
 
 # ✅ GPU 가속 AI 라이브러리 (CUDA 12.6 지원)
-tensorflow==2.17.0  # TensorFlow (CUDA 12.6 자동 지원)
-jax[cuda12_pip]  # 최신 JAX (CUDA 12.6 지원)
+tritonclient[http]
