@@ -18,7 +18,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.gateway
-    container_name: gateway-aiport
+    container_name: gateway
     depends_on:
       model-generator:
         condition: service_completed_successfully
@@ -70,7 +70,7 @@ services:
 
   redis:
     image: redis:7.0
-    container_name: redis-aiport
+    container_name: redis
     ports:
       - "6380:6379"
     networks:
