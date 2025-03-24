@@ -3,8 +3,8 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # 필수 패키지 설치
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements_collector.txt /app/
+RUN pip install --no-cache-dir -r requirements_collector.txt
 
 # Binance Collector 코드 복사
 COPY data_collector /app/data_collector

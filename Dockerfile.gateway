@@ -3,8 +3,8 @@ FROM python:3.10-slim
 WORKDIR /app
 
 # requirements 복사 및 설치
-COPY requirements.txt /app/
-RUN pip install --no-cache-dir -r requirements.txt
+COPY requirements_gateway.txt /app/
+RUN pip install --no-cache-dir -r requirements_gateway.txt
 
 # gateway 및 스크립트 복사
 COPY gateway /app/gateway
