@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import os
+import time
 
 class RiskAssessmentModel(nn.Module):
     def __init__(self):
@@ -31,3 +32,10 @@ if __name__ == "__main__":
     )
 
     print(f"✅ 모델 저장 완료: {model_path}")
+
+    # 컨테이너가 종료되지 않도록 유지하기 위한 루프
+    try:
+        while True:
+            time.sleep(3600) 
+    except KeyboardInterrupt:
+        print("🛑 종료 요청 감지, 컨테이너 정리 중...")

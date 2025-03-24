@@ -124,7 +124,7 @@ services:
       - kafka
     environment:
       - KAFKA_CLUSTERS_0_NAME=local-cluster
-      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=localhost:29092
+      - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
     restart: always
 
 networks:
