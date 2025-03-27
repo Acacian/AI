@@ -1,10 +1,23 @@
 services:
+  collector:
+    build:
+      context: .
+      dockerfile: Dockerfile.collector
+    container_name: binance-collector
+    depends_on:
+      kafka:
+        condition: service_healthy
+    networks:
+      - ainet
+    restart: always
   gateway:
     build:
       context: .
       dockerfile: Dockerfile.gateway
     container_name: gateway
     depends_on:
+      collector:
+        condition: service_started
       triton:
         condition: service_healthy
       kafka:
@@ -22,25 +35,41 @@ services:
       timeout: 5s
       retries: 5
 
-  trainer:
+  trainer-pattern:
     build:
       context: .
-      dockerfile: Dockerfile.trainer
-    container_name: trainer
+      dockerfile: Dockerfile.patterntrainer
+    container_name: trainer-pattern
     depends_on:
       kafka:
         condition: service_healthy
-    networks:
-      - ainet
     volumes:
       - ./models:/models
+    networks:
+      - ainet
+    restart: always
+
+  trainer-risk:
+    build:
+      context: .
+      dockerfile: Dockerfile.risktrainer
+    container_name: trainer-risk
+    depends_on:
+      kafka:
+        condition: service_healthy
+    volumes:
+      - ./models:/models
+    networks:
+      - ainet
     restart: always
 
   triton:
     image: nvcr.io/nvidia/tritonserver:23.03-py3
     container_name: triton-inference
     depends_on:
-      trainer:
+      trainer-pattern:
+        condition: service_started
+      trainer-risk:
         condition: service_started
     deploy:
       resources:
@@ -51,12 +80,7 @@ services:
               capabilities: [ gpu ]
     volumes:
       - ./models:/models
-    command: [
-      "tritonserver",
-      "--model-repository=/models",
-      "--model-control-mode=poll",
-      "--repository-poll-secs=30"
-    ]
+    command: [ "tritonserver", "--model-repository=/models", "--model-control-mode=poll", "--repository-poll-secs=30" ]
     ports:
       - "8010:8000"
       - "8011:8001"

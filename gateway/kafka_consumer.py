@@ -7,12 +7,6 @@ from gateway.kafka_producer import send_message
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
 
 TOPIC_MODEL_MAP = {
-    "ai_mining_1m": "ai_mining",
-    "ai_mining_5m": "ai_mining",
-    "ai_mining_15m": "ai_mining",
-    "ai_mining_1h": "ai_mining",
-    "ai_mining_1d": "ai_mining",
-
     "ai_pattern_1m": "ai_pattern",
     "ai_pattern_5m": "ai_pattern",
     "ai_pattern_15m": "ai_pattern",
@@ -27,12 +21,6 @@ TOPIC_MODEL_MAP = {
 }
 
 NEXT_TOPIC_MAP = {
-    "ai_mining_1m": "ai_pattern_1m",
-    "ai_mining_5m": "ai_pattern_5m",
-    "ai_mining_15m": "ai_pattern_15m",
-    "ai_mining_1h": "ai_pattern_1h",
-    "ai_mining_1d": "ai_pattern_1d",
-
     "ai_pattern_1m": "ai_risk_manage_1m",
     "ai_pattern_5m": "ai_risk_manage_5m",
     "ai_pattern_15m": "ai_risk_manage_15m",
@@ -64,11 +52,9 @@ def consume_loop():
             print(f"⚠️ 알 수 없는 토픽: {topic}")
             continue
 
-        # Triton Inference
         result = send_to_triton(model_name, data)
         print(f"✅ [{topic}] → {model_name} 결과: {result}")
 
-        # 다음 에이전트로 메시지 전송
         next_topic = NEXT_TOPIC_MAP.get(topic)
         if next_topic:
             send_message(next_topic, {"input": result[0]})

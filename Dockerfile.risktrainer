@@ -10,4 +10,4 @@ RUN pip install --no-cache-dir -r requirements_trainer.txt
 COPY trainer /app/trainer
 
 # collector 실행
-CMD ["python", "/app/trainer/training_consumer.py"]
+CMD ["python", "/app/trainer/training_risk_consumer.py"]
