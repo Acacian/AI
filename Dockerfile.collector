@@ -2,12 +2,11 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# 필수 패키지 설치
 COPY requirements_collector.txt /app/
 RUN pip install --no-cache-dir -r requirements_collector.txt
 
-# Binance Collector 코드 복사
+COPY gateway /app/gateway
 COPY data_collector /app/data_collector
 
-# collector 실행
+ENV PYTHONPATH=/app
 CMD ["python", "/app/data_collector/binance_collector.py"]
