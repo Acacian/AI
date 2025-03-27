@@ -12,7 +12,6 @@ TOPIC_MODEL_MAP = {
     "ai_pattern_15m": "ai_pattern",
     "ai_pattern_1h": "ai_pattern",
     "ai_pattern_1d": "ai_pattern",
-
     "ai_risk_manage_1m": "ai_risk_manage",
     "ai_risk_manage_5m": "ai_risk_manage",
     "ai_risk_manage_15m": "ai_risk_manage",
@@ -38,6 +37,15 @@ def get_kafka_consumer(topics):
         group_id="ai_gateway_consumer_group"
     )
 
+def is_valid_data(topic, data):
+    if "pattern" in topic and data.get("target") == 0:
+        print(f"⚠️ Pattern target=0 → 무시: {topic}")
+        return False
+    if "risk" in topic and data.get("target") == 0:
+        print(f"⚠️ Risk target=0 → 무시: {topic}")
+        return False
+    return True
+
 def consume_loop():
     topics = list(TOPIC_MODEL_MAP.keys())
     consumer = get_kafka_consumer(topics)
@@ -50,6 +58,9 @@ def consume_loop():
         model_name = TOPIC_MODEL_MAP.get(topic)
         if not model_name:
             print(f"⚠️ 알 수 없는 토픽: {topic}")
+            continue
+
+        if not is_valid_data(topic, data):
             continue
 
         result = send_to_triton(model_name, data)

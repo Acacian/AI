@@ -6,7 +6,7 @@ import torch.optim as optim
 from kafka import KafkaConsumer
 
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
-TOPIC = "ai_training_btcusdt_1m"
+TOPIC = "ai_pattern_training_btcusdt_1m"
 MODEL_PATH = "/models/ai_pattern/1/model.onnx"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
