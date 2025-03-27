@@ -1,0 +1,16 @@
+# FastAPI 웹서버
+fastapi
+uvicorn[standard]
+
+# Kafka 통신
+kafka-python
+
+# Triton Inference Server 통신
+tritonclient[http]
+
+# 수치 연산
+numpy
+
+# PyTorch 모델 생성 및 ONNX 변환
+torch
+onnx

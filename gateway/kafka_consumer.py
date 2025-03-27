@@ -6,7 +6,6 @@ from gateway.kafka_producer import send_message
 
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
 
-# 🔧 topic → 모델명 매핑 (Triton용)
 TOPIC_MODEL_MAP = {
     "ai_mining_1m": "ai_mining",
     "ai_mining_5m": "ai_mining",
@@ -27,7 +26,6 @@ TOPIC_MODEL_MAP = {
     "ai_risk_manage_1d": "ai_risk_manage",
 }
 
-# 🔁 topic → 다음 토픽 매핑 (에이전트 체인 전파용)
 NEXT_TOPIC_MAP = {
     "ai_mining_1m": "ai_pattern_1m",
     "ai_mining_5m": "ai_pattern_5m",
@@ -40,8 +38,6 @@ NEXT_TOPIC_MAP = {
     "ai_pattern_15m": "ai_risk_manage_15m",
     "ai_pattern_1h": "ai_risk_manage_1h",
     "ai_pattern_1d": "ai_risk_manage_1d",
-
-    # ai_risk_manage_* → 끝단 (다음 없음)
 }
 
 def get_kafka_consumer(topics):

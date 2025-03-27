@@ -1,51 +1,110 @@
-import requests
 import time
+import json
+import random
+import requests
+from datetime import datetime
+from collections import deque
 from gateway.kafka_producer import send_message
 
 BINANCE_API_URL = "https://api.binance.com/api/v3/klines"
 
-# ✅ 지원할 시간봉 목록
-INTERVALS = {
-    "1m": "ai_mining_1m",
-    "5m": "ai_mining_5m",
-    "15m": "ai_mining_15m",
-    "1h": "ai_mining_1h",
-    "1d": "ai_mining_1d"
-}
+SYMBOLS = ["BTCUSDT", "ETHUSDT", "SOLUSDT"]
+INTERVALS = ["1m", "5m", "15m", "1h", "1d"]
 
-def fetch_kline(symbol="BTCUSDT", interval="1m", limit=1):
-    """ 바이낸스에서 특정 시간봉 데이터를 가져오는 함수 """
+TRAIN_QUEUE = {symbol: {interval: deque(maxlen=3) for interval in INTERVALS} for symbol in SYMBOLS}
+
+def label_strategy(data):
+    if len(data) < 3:
+        return 0
+    close_now = data[-1]["close"]
+    close_prev = data[-2]["close"]
+    close_before = data[-3]["close"]
+    pct_change_1 = (close_now - close_prev) / close_prev
+    pct_change_2 = (close_prev - close_before) / close_before
+
+    if pct_change_1 > 0.005 and pct_change_2 > 0.005:
+        return 1
+    elif pct_change_1 < -0.005 and pct_change_2 < -0.005:
+        return 2
+    else:
+        return 0
+
+def format_ts(ts_ms):
+    return datetime.utcfromtimestamp(ts_ms / 1000).strftime('%Y-%m-%d %H:%M:%S')
+
+def fetch_kline(symbol, interval="1m", limit=1):
     params = {"symbol": symbol, "interval": interval, "limit": limit}
-    response = requests.get(BINANCE_API_URL, params=params)
-    
-    if response.status_code != 200:
-        print(f"⚠️ Binance API 요청 실패 ({interval}): {response.text}")
-        return None
-    
-    data = response.json()[0]
-    
-    return {
-        "timestamp": data[0],  # UNIX timestamp (밀리초)
-        "open": float(data[1]),
-        "high": float(data[2]),
-        "low": float(data[3]),
-        "close": float(data[4]),
-        "volume": float(data[5]),
-        "interval": interval  # ✅ 추가: 어느 시간봉인지 포함
-    }
+    for attempt in range(3):
+        try:
+            response = requests.get(BINANCE_API_URL, params=params, timeout=3)
+            if response.status_code != 200:
+                time.sleep(1)
+                continue
+            data = response.json()
+            if not data:
+                return None
+            d = data[0]
+            return {
+                "symbol": symbol,
+                "timestamp": d[0],
+                "open": float(d[1]),
+                "high": float(d[2]),
+                "low": float(d[3]),
+                "close": float(d[4]),
+                "volume": float(d[5]),
+                "interval": interval
+            }
+        except Exception:
+            time.sleep(2 ** attempt + random.random())
+    return None
+
+def backup_message(topic, message):
+    try:
+        with open(f"backup_{topic}.jsonl", "a") as f:
+            f.write(json.dumps(message) + "\n")
+    except Exception:
+        pass
 
 if __name__ == "__main__":
-    last_sent = {interval: None for interval in INTERVALS}  # ✅ 각 시간봉 별 마지막 전송 시간 기록
+    last_sent = {}
 
     while True:
-        for interval, topic in INTERVALS.items():
-            kline = fetch_kline(interval=interval)
-            
-            if kline:
-                # ✅ 1m 데이터는 항상 전송, 나머지는 마지막 값과 비교하여 중복 방지
-                if interval == "1m" or kline["timestamp"] != last_sent[interval]:
-                    print(f"📡 Binance 데이터 ({interval}): {kline}")
-                    send_message(topic, kline)
-                    last_sent[interval] = kline["timestamp"]  # 마지막 전송 기록 업데이트
-        
-        time.sleep(60)  # 1분마다 실행
+        start = time.time()
+        failed_count = 0
+
+        for symbol in SYMBOLS:
+            for interval in INTERVALS:
+                topic = f"ai_mining_{symbol.lower()}_{interval}"
+                key = f"{symbol}-{interval}"
+
+                kline = fetch_kline(symbol=symbol, interval=interval)
+                if not kline:
+                    failed_count += 1
+                    continue
+
+                ts = kline["timestamp"]
+                close = kline["close"]
+                prev = last_sent.get(key, {"timestamp": None, "close": None})
+
+                if interval == "1m" or ts != prev["timestamp"] or close != prev["close"]:
+                    try:
+                        send_message(topic, kline)
+                        train_queue = TRAIN_QUEUE[symbol][interval]
+                        train_queue.append(kline)
+                        if len(train_queue) == 3:
+                            target = label_strategy(list(train_queue))
+                            train_topic = f"ai_training_{symbol.lower()}_{interval}"
+                            send_message(train_topic, {
+                                "input": [kline["open"], kline["high"], kline["low"], kline["close"], kline["volume"]],
+                                "target": target
+                            })
+                        print(f"{symbol}-{interval} → {topic} | {format_ts(ts)} | Close: {close}")
+                        last_sent[key] = {"timestamp": ts, "close": close}
+                    except Exception:
+                        backup_message(topic, kline)
+
+        if failed_count >= 3:
+            time.sleep(30)
+
+        elapsed = time.time() - start
+        time.sleep(max(0, 60 - elapsed))
