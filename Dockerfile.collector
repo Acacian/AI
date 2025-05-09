@@ -2,11 +2,9 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-COPY requirements_collector.txt /app/
-RUN pip install --no-cache-dir -r requirements_collector.txt
+COPY collector/ ./collector/
+COPY gateway/ ./gateway/ 
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt
 
-COPY gateway /app/gateway
-COPY data_collector /app/data_collector
-
-ENV PYTHONPATH=/app
-CMD ["python", "/app/data_collector/binance_collector.py"]
+CMD ["python", "collector/main.py"]

@@ -1,3 +1,5 @@
+version: "3.8"
+
 services:
   collector:
     build:
@@ -10,36 +12,12 @@ services:
     networks:
       - ainet
     restart: always
-  gateway:
-    build:
-      context: .
-      dockerfile: Dockerfile.gateway
-    container_name: gateway
-    depends_on:
-      collector:
-        condition: service_started
-      triton:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
-    env_file:
-      - .env
-    ports:
-      - "8080:8080"
-    networks:
-      - ainet
-    restart: always
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8080/health" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
-  trainer-pattern:
+  multi-agent-runner:
     build:
       context: .
-      dockerfile: Dockerfile.patterntrainer
-    container_name: trainer-pattern
+      dockerfile: Dockerfile.runner
+    container_name: multi-agent-runner
     depends_on:
       kafka:
         condition: service_healthy
@@ -48,55 +26,10 @@ services:
     networks:
       - ainet
     restart: always
-
-  trainer-risk:
-    build:
-      context: .
-      dockerfile: Dockerfile.risktrainer
-    container_name: trainer-risk
-    depends_on:
-      kafka:
-        condition: service_healthy
-    volumes:
-      - ./models:/models
-    networks:
-      - ainet
-    restart: always
-
-  triton:
-    image: nvcr.io/nvidia/tritonserver:23.03-py3
-    container_name: triton-inference
-    depends_on:
-      trainer-pattern:
-        condition: service_started
-      trainer-risk:
-        condition: service_started
-    deploy:
-      resources:
-        reservations:
-          devices:
-            - driver: nvidia
-              count: 1
-              capabilities: [ gpu ]
-    volumes:
-      - ./models:/models
-    command: [ "tritonserver", "--model-repository=/models", "--model-control-mode=poll", "--repository-poll-secs=30" ]
-    ports:
-      - "8010:8000"
-      - "8011:8001"
-      - "8012:8002"
-    networks:
-      - ainet
-    restart: always
-    healthcheck:
-      test: [ "CMD", "curl", "-f", "http://localhost:8000/v2/health/ready" ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   redis:
     image: redis:7.0
-    container_name: redis
+    container_name: redis-ai
     ports:
       - "6380:6379"
     networks:
@@ -153,10 +86,38 @@ services:
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka:9092
     restart: always
 
+  triton:
+    image: nvcr.io/nvidia/tritonserver:23.03-py3
+    container_name: triton-inference
+    depends_on:
+      - multi-agent-runner
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    volumes:
+      - ./models:/models
+    command: [ "tritonserver", "--model-repository=/models", "--model-control-mode=poll", "--repository-poll-secs=30" ]
+    ports:
+      - "8010:8000"
+      - "8011:8001"
+      - "8012:8002"
+    networks:
+      - ainet
+    restart: always
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/v2/health/ready" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
 networks:
   ainet:
     driver: bridge
 
 volumes:
-  redis-data:
   kafka-data:
+  redis-data:
