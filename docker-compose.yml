@@ -13,6 +13,17 @@ services:
       - ainet
     restart: always
 
+  gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile.gateway
+    container_name: gateway
+    depends_on:
+      - kafka
+    networks:
+      - ainet
+    restart: always
+
   multi-agent-runner:
     build:
       context: .

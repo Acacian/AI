@@ -81,8 +81,12 @@ Binance_Secret :
 ## 실행법
 
 1. env 파일을 생성한 후, 위에 있는 환경변수들의 Key에 맞는 Value를 입력합니다.
-2. docker-compose --env-file .env up -d --build 명령어를 통해 가상환경에서 AI를 작동시킵니다.
+2. 프로젝트 Root에 models 폴더를 만들어야 합니다. Onnx가 동적으로 저장되므로, 반드시 빈 폴더여야 합니다.
+3. docker-compose --env-file .env up -d --build 명령어를 통해 가상환경에서 AI를 작동시킵니다.
 
 ## 참고사항
 
 1. GPU를 사용하기 때문에 최소한의 하드웨어가 필수입니다. (현 개발환경 : NVIDIA RTX 4060 Ti/CUDA Version: 12.6)
+2. 실행법을 반드시 참고해서 설치 및 실행하시기 바랍니다.  
+   최초 실행 시 vllm 컨테이너가 Hugging Face에서 모델을 다운로드하기 때문에,  
+   로컬에 vllm_models 폴더가 생성되며 이는 정상 의도된 동작입니다.
