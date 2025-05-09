@@ -4,27 +4,88 @@
 백엔드와 연계하기 위해 시작한 프로젝트이며 수익을 우선으로 두고 있기는 하나, 항상 수익을  
 보장하는 프로그램이 아니므로 투자에 대한 모든 책임은 투자한 본인에게 귀속됩니다.
 
+## Architecture
+
+```mermaid
+flowchart TD
+  subgraph Collector
+    A1[Binance API] --> A2[Collector]
+    A2 -->|features| Kafka
+  end
+
+  subgraph Kafka Broker
+    Kafka[(Kafka)]
+  end
+
+  subgraph Agents
+    Kafka --> B1[multi_agent_runner]
+    B1 --> B2[pattern_ae]
+    B1 --> B3[risk_scorer]
+    B1 --> B4[volume_ae]
+    B1 --> B5[trend_segmenter]
+    B1 --> B6[volatility_watcher]
+    B2 -->|ONNX| Models
+    B3 -->|ONNX| Models
+    B4 -->|ONNX| Models
+    B5 -->|ONNX| Models
+    B6 -->|ONNX| Models
+  end
+
+  subgraph Models Dir
+    Models[/models/]
+  end
+
+  subgraph Triton
+    Models --> T1[Triton Inference Server]
+  end
+
+  subgraph Gateway
+    Kafka --> G1[Gateway]
+    G1 --> T1
+    T1 --> G1
+    G1 -->|inference result| Kafka
+  end
+
+  subgraph SignalProcessor
+    Kafka --> S1[Signal Processor]
+    S1 -->|Buy/Sell Signal| Exec
+  end
+
+  subgraph Execution
+    Exec[Execution Engine]
+  end
+
+  subgraph Optional
+    Redis[(Redis)]
+    KafkaUI[Kafka UI]
+  end
+```
+
 ## Settings
 
-개발세팅 및 사용된 프레임워크  
-언어 : Python / FastApi  
-가상화 : Docker / Docker Compose  
-고속 데이터프레임 처리 : Polars (Pandas의 느린 처리속도를 대체)  
-멀티 AI 통신 : Redis, Kafka  
-추론 : triton(Agents에서 만든 ONNX 파일을 Polling 해서 사용)  
+언어 : Python / FastApi
+가상환경 : Docker / Docker Compose
+고속 데이터프레임 처리 : Polars (Pandas의 느린 처리속도를 대체)
+멀티 AI 통신 : Redis, Kafka
+추론 : triton(Agents에서 만든 ONNX 파일을 Polling 해서 사용)
 학습 : torch
 
 ## Port
 
 ## Env
 
-Binance_Key :  
+Binance_Key :
 Binance_Secret :
 
 ## 실행법
 
-1. docker-compose --env-file .env up -d --build
+1. env 파일을 생성한 후, 위에 있는 환경변수들의 Key에 맞는 Value를 입력합니다.
+2. docker-compose --env-file .env up -d --build 명령어를 통해 가상환경에서 AI를 작동시킵니다.
 
 ## 참고사항
 
 1. GPU를 사용하기 때문에 최소한의 하드웨어가 필수입니다. (현 개발환경 : NVIDIA RTX 4060 Ti/CUDA Version: 12.6)
+
+```
+
+```
