@@ -15,5 +15,5 @@ def load_and_run_agent(config_path: str):
     agent = AgentClass(config_path)
     agent.run()
 
-def get_all_agent_configs(base_path="1m_agents"):
+def get_all_agent_configs(base_path="agents_1m"):
     return glob.glob(f"{base_path}/*/config.yaml")

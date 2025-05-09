@@ -18,12 +18,18 @@ while True:
     start = time.time()
     for symbol in symbols:
         for interval in intervals:
+            print(f"📡 Try fetch: {symbol}-{interval}", flush=True)
             klines = fetch_kline(symbol, interval, limit)
-            if not klines or len(klines) < 3:
+            if not klines:
+                print(f"❌ No data fetched for {symbol}-{interval}", flush=True)
+                continue
+            if len(klines) < 3:
+                print(f"⚠️ Too short: {symbol}-{interval} | len={len(klines)}", flush=True)
                 continue
 
             ts = klines[-1]["timestamp"]
             if not scheduler.should_fetch(symbol, interval, ts):
+                print(f"🕒 Skip duplicate fetch: {symbol}-{interval} | ts={ts}", flush=True)
                 continue
 
             features = [

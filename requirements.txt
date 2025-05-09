@@ -4,13 +4,15 @@ uvicorn[standard]
 
 # Kafka 통신
 kafka-python
+pyyaml
 
 # Triton Inference Server 통신
 tritonclient[http]
 
-# 수치 연산
-numpy
-
 # PyTorch 모델 생성 및 ONNX 변환
 torch
 onnx
+
+# Data 처리 및 생성
+numpy
+requests

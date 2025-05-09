@@ -4,7 +4,7 @@ WORKDIR /app
 
 # 필수 파일 복사
 COPY multi_agent_runner/ ./multi_agent_runner/
-COPY 1m_agents/ ./1m_agents/
+COPY agents_1m/ ./agents_1m/
 
 # 필요 시 requirements.txt 존재 시 설치
 COPY requirements.txt ./

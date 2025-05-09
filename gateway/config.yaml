@@ -1,0 +1,9 @@
+topics:
+  volume_infer_btcusdt_1m: volume_ae
+  trend_infer_btcusdt_1m: trend_segmenter
+  risk_infer_btcusdt_1m: risk_scorer
+
+routing:
+  volume_infer_btcusdt_1m: risk_infer_btcusdt_1m
+  trend_infer_btcusdt_1m: risk_infer_btcusdt_1m
+  risk_infer_btcusdt_1m: signal_input_btcusdt_1m

@@ -1,8 +1,9 @@
-import os, yaml, json, torch
+import os, yaml, json, torch, sys
 import torch.nn as nn
 import torch.optim as optim
 from kafka import KafkaConsumer
-from .model import AEModel
+sys.path.append(os.path.dirname(__file__))
+from model import AEModel
 
 class Agent:
     def __init__(self, config_path):
@@ -30,7 +31,7 @@ class Agent:
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
-        print(f"🔇 Noise AE Loss: {loss.item():.6f}")
+        print(f"🔊 Volume AE Loss: {loss.item():.6f}")
 
     def export_onnx(self):
         self.model.eval()
@@ -50,9 +51,9 @@ class Agent:
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
             value_deserializer=lambda v: json.loads(v.decode("utf-8")),
             auto_offset_reset="latest",
-            group_id="noise_filter_group"
+            group_id="volume_ae_group"
         )
-        print(f"🎛️ NoiseFilter consuming from: {self.topic}")
+        print(f"📦 VolumeAE consuming from: {self.topic}")
 
         for msg in consumer:
             value = msg.value

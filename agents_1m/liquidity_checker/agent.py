@@ -1,11 +1,13 @@
 import os
+import sys
 import yaml
 import json
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from kafka import KafkaConsumer
-from .model import AEModel
+sys.path.append(os.path.dirname(__file__))
+from model import AEModel
 
 class Agent:
     def __init__(self, config_path: str):

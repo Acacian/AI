@@ -1,8 +1,9 @@
-import os, yaml, json, torch
+import os, yaml, json, torch, sys
 import torch.nn as nn
 import torch.optim as optim
 from kafka import KafkaConsumer
-from .model import TrendSegmenterLSTM
+sys.path.append(os.path.dirname(__file__))
+from model import TrendSegmenterLSTM
 
 class Agent:
     def __init__(self, config_path):

@@ -1,0 +1,27 @@
+# Kafka 설정
+listen_topic: ai_intermediate_outputs
+output_topic: ai_llm_decision_outputs
+group_id: llm_agent_group
+
+# LLM 서버 설정
+llm_api_url: http://vllm-server:8000/v1/completions
+model_name: llama2-7b
+temperature: 0.2
+max_tokens: 128
+
+# 전략 프롬프트 구성용 설정
+prompt_template: |
+  다음은 다양한 AI agent들의 분석 결과입니다:
+
+  - 패턴 분석 결과: {pattern}
+  - 리스크 점수: {risk}
+  - 거래량 상태: {volume}
+  - 추세 상태: {trend}
+  - 변동성 상태: {volatility}
+
+  위 데이터를 참고하여 다음 중 하나를 선택해 전략을 추천하세요:
+  - Buy (매수)
+  - Hold (관망)
+  - Sell (매도)
+
+  당신의 결정은?

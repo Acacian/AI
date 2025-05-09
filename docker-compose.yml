@@ -114,6 +114,40 @@ services:
       timeout: 5s
       retries: 5
 
+  llm-agent:
+    build:
+      context: .
+      dockerfile: Dockerfile.llm_agent
+    container_name: llm-agent
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      - KAFKA_BROKER=kafka:9092
+    networks:
+      - ainet
+    restart: always
+
+  vllm-server:
+    image: vllm/vllm-openai:latest
+    container_name: vllm-server
+    environment:
+      - MODEL_NAME=mistralai/Mistral-7B-Instruct-v0.2
+    ports:
+      - "8020:8000"
+    networks:
+      - ainet
+    volumes:
+      - ./vllm_models:/root/.cache/huggingface # 모델 캐시
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [ gpu ]
+    restart: always
+
 networks:
   ainet:
     driver: bridge

@@ -1,8 +1,9 @@
-import os, yaml, json, torch
+import os, yaml, json, torch, sys
 import torch.nn as nn
 import torch.optim as optim
 from kafka import KafkaConsumer
-from .model import RiskScorerLSTM
+sys.path.append(os.path.dirname(__file__))
+from model import AEModel
 
 class Agent:
     def __init__(self, config_path):
@@ -15,28 +16,22 @@ class Agent:
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
         self.input_dim = self.config.get("input_dim", 5)
-        self.hidden_size = self.config.get("hidden_size", 64)
-        self.num_classes = self.config.get("num_classes", 2)  # 예: 하락 위험 0/1
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.model = RiskScorerLSTM(self.input_dim, self.hidden_size, self.num_classes).to(self.device)
+        self.model = AEModel(self.input_dim, self.sequence_length).to(self.device)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
-        self.loss_fn = nn.CrossEntropyLoss()
-        self.batch_x, self.batch_y = [], []
+        self.loss_fn = nn.MSELoss()
+        self.batch = []
 
     def train_step(self):
         self.model.train()
-        x = torch.tensor(self.batch_x, dtype=torch.float32).to(self.device)
-        y = torch.tensor(self.batch_y, dtype=torch.long).to(self.device)
-
-        logits = self.model(x)
-        loss = self.loss_fn(logits, y)
+        x = torch.tensor(self.batch, dtype=torch.float32).to(self.device)
+        recon = self.model(x)
+        loss = self.loss_fn(recon, x)
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
-
-        acc = (logits.argmax(1) == y).float().mean()
-        print(f"⚠️ Risk Loss: {loss.item():.6f} | Acc: {acc.item():.4f}")
+        print(f"🔥 Overheat AE Loss: {loss.item():.6f}")
 
     def export_onnx(self):
         self.model.eval()
@@ -56,26 +51,22 @@ class Agent:
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
             value_deserializer=lambda v: json.loads(v.decode("utf-8")),
             auto_offset_reset="latest",
-            group_id="risk_scorer_group"
+            group_id="overheat_detector_group"
         )
-        print(f"⚠️ RiskScorer consuming from: {self.topic}")
+        print(f"🔥 OverheatDetector consuming from: {self.topic}")
 
         for msg in consumer:
             value = msg.value
-            x = value.get("input")
-            y = value.get("target")
-            if not x or y is None or len(x) != self.sequence_length:
+            features = value.get("input")
+            if not features or len(features) != self.sequence_length:
                 continue
 
-            self.batch_x.append(x)
-            self.batch_y.append(y)
-
-            if len(self.batch_x) >= self.batch_size:
+            self.batch.append(features)
+            if len(self.batch) >= self.batch_size:
                 try:
                     self.train_step()
                     self.export_onnx()
                 except Exception as e:
                     print(f"❌ Train error: {e}")
                 finally:
-                    self.batch_x.clear()
-                    self.batch_y.clear()
+                    self.batch.clear()

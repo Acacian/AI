@@ -1,31 +1,19 @@
-import json
 import os
+import json
+import yaml
 from kafka import KafkaConsumer
 from gateway.triton_client import send_to_triton
 from gateway.kafka_producer import send_message
 
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
+CONFIG_PATH = os.getenv("GATEWAY_CONFIG", "gateway/config.yaml")
 
-TOPIC_MODEL_MAP = {
-    "ai_pattern_1m": "ai_pattern",
-    "ai_pattern_5m": "ai_pattern",
-    "ai_pattern_15m": "ai_pattern",
-    "ai_pattern_1h": "ai_pattern",
-    "ai_pattern_1d": "ai_pattern",
-    "ai_risk_manage_1m": "ai_risk_manage",
-    "ai_risk_manage_5m": "ai_risk_manage",
-    "ai_risk_manage_15m": "ai_risk_manage",
-    "ai_risk_manage_1h": "ai_risk_manage",
-    "ai_risk_manage_1d": "ai_risk_manage",
-}
+# 구성 로딩
+with open(CONFIG_PATH, 'r') as f:
+    config = yaml.safe_load(f)
 
-NEXT_TOPIC_MAP = {
-    "ai_pattern_1m": "ai_risk_manage_1m",
-    "ai_pattern_5m": "ai_risk_manage_5m",
-    "ai_pattern_15m": "ai_risk_manage_15m",
-    "ai_pattern_1h": "ai_risk_manage_1h",
-    "ai_pattern_1d": "ai_risk_manage_1d",
-}
+topic_model_map = config.get("topics", {})
+next_topic_map = config.get("routing", {})
 
 def get_kafka_consumer(topics):
     return KafkaConsumer(
@@ -37,17 +25,12 @@ def get_kafka_consumer(topics):
         group_id="ai_gateway_consumer_group"
     )
 
-def is_valid_data(topic, data):
-    if "pattern" in topic and data.get("target") == 0:
-        print(f"⚠️ Pattern target=0 → 무시: {topic}")
-        return False
-    if "risk" in topic and data.get("target") == 0:
-        print(f"⚠️ Risk target=0 → 무시: {topic}")
-        return False
-    return True
+def is_valid_data(data: dict) -> bool:
+    # 추론을 위한 최소 구조 검증
+    return "input" in data and isinstance(data["input"], list)
 
 def consume_loop():
-    topics = list(TOPIC_MODEL_MAP.keys())
+    topics = list(topic_model_map.keys())
     consumer = get_kafka_consumer(topics)
     print(f"📥 Kafka Consumer 구독 시작: {topics}")
 
@@ -55,20 +38,25 @@ def consume_loop():
         topic = msg.topic
         data = msg.value
 
-        model_name = TOPIC_MODEL_MAP.get(topic)
+        model_name = topic_model_map.get(topic)
         if not model_name:
             print(f"⚠️ 알 수 없는 토픽: {topic}")
             continue
 
-        if not is_valid_data(topic, data):
+        if not is_valid_data(data):
+            print(f"⚠️ 유효하지 않은 데이터 구조: {data}")
             continue
 
-        result = send_to_triton(model_name, data)
-        print(f"✅ [{topic}] → {model_name} 결과: {result}")
+        try:
+            result = send_to_triton(model_name, data)
+            print(f"✅ [{topic}] → {model_name} 결과: {result}")
 
-        next_topic = NEXT_TOPIC_MAP.get(topic)
-        if next_topic:
-            send_message(next_topic, {"input": result[0]})
-            print(f"📤 결과 전송 → {next_topic}: {result[0]}")
-        else:
-            print(f"🔚 최종 단계 (다음 없음): {topic}")
+            next_topic = next_topic_map.get(topic)
+            if next_topic:
+                send_message(next_topic, {"input": result[0]})
+                print(f"📤 결과 전송 → {next_topic}: {result[0]}")
+            else:
+                print(f"🔚 최종 단계: {topic}")
+
+        except Exception as e:
+            print(f"❌ 추론 실패: {topic} | {e}")

@@ -1,13 +1,11 @@
+# Dockerfile.llm_agent
 FROM python:3.10-slim
 
 WORKDIR /app
 
-COPY collector/ ./collector/
-COPY gateway/ ./gateway/
+COPY agents_llm/ ./agents_llm/
 COPY requirements.txt ./
-
-ENV PYTHONPATH=/app
 
 RUN pip install --no-cache-dir -r requirements.txt
 
-CMD ["python", "collector/main.py"]
+CMD ["python", "agents_llm/agent.py"]
