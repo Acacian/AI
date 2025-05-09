@@ -18,7 +18,7 @@
 
 ## Env
 
-Binance_Key :
+Binance_Key :  
 Binance_Secret :
 
 ## 실행법
