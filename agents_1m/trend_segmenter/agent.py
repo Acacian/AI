@@ -25,7 +25,11 @@ class Agent:
         self.loss_fn = nn.CrossEntropyLoss()
         self.batch_x, self.batch_y = [], []
 
+        print(f"🧪 TrendSegmenter Agent 초기화 완료 - Topic: {self.topic}", flush=True)
+
     def train_step(self):
+        print(f"🧪 Train Step 시작 - Batch size: {len(self.batch_x)}", flush=True)
+
         self.model.train()
         x = torch.tensor(self.batch_x, dtype=torch.float32).to(self.device)
         y = torch.tensor(self.batch_y, dtype=torch.long).to(self.device)
@@ -37,7 +41,7 @@ class Agent:
         self.optimizer.zero_grad()
 
         acc = (logits.argmax(1) == y).float().mean()
-        print(f"📈 Trend Loss: {loss.item():.6f} | Acc: {acc.item():.4f}")
+        print(f"📈 Trend Loss: {loss.item():.6f} | Acc: {acc.item():.4f}", flush=True)
 
     def export_onnx(self):
         self.model.eval()
@@ -49,7 +53,7 @@ class Agent:
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
             opset_version=11
         )
-        print(f"✅ ONNX Exported: {self.model_path}")
+        print(f"✅ ONNX Exported: {self.model_path}", flush=True)
 
     def run(self):
         consumer = KafkaConsumer(
@@ -59,13 +63,16 @@ class Agent:
             auto_offset_reset="latest",
             group_id="trend_segmenter_group"
         )
-        print(f"📡 TrendSegmenter consuming from: {self.topic}")
+        print(f"📡 TrendSegmenter consuming from: {self.topic}", flush=True)
 
         for msg in consumer:
             value = msg.value
             x = value.get("input")
             y = value.get("target")
+            print(f"📥 수신됨 - input len={len(x) if x else 'None'}, target={y}", flush=True)
+
             if not x or y is None or len(x) != self.sequence_length:
+                print("⚠️ 무시됨 - 길이 부족 또는 None", flush=True)
                 continue
 
             self.batch_x.append(x)
@@ -76,7 +83,7 @@ class Agent:
                     self.train_step()
                     self.export_onnx()
                 except Exception as e:
-                    print(f"❌ Train error: {e}")
+                    print(f"❌ Train error: {e}", flush=True)
                 finally:
                     self.batch_x.clear()
                     self.batch_y.clear()

@@ -23,6 +23,8 @@ class Agent:
         self.loss_fn = nn.MSELoss()
         self.batch = []
 
+        print(f"🧪 Agent 초기화 완료 - Topic: {self.topic}", flush=True)
+
     def train_step(self):
         self.model.train()
         x = torch.tensor(self.batch, dtype=torch.float32).to(self.device)
@@ -31,7 +33,7 @@ class Agent:
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
-        print(f"🔥 Overheat AE Loss: {loss.item():.6f}")
+        print(f"🔥 Overheat AE Loss: {loss.item():.6f}", flush=True)
 
     def export_onnx(self):
         self.model.eval()
@@ -43,21 +45,29 @@ class Agent:
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
             opset_version=11
         )
-        print(f"✅ ONNX Exported: {self.model_path}")
+        print(f"✅ ONNX Exported: {self.model_path}", flush=True)
 
     def run(self):
+        group_id = f"overheat_detector_group_{os.getpid()}"
+        print(f"🧪 KafkaConsumer 초기화 중 - group_id: {group_id}", flush=True)
+
         consumer = KafkaConsumer(
             self.topic,
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
             value_deserializer=lambda v: json.loads(v.decode("utf-8")),
             auto_offset_reset="latest",
-            group_id="overheat_detector_group"
+            group_id=group_id,
+            consumer_timeout_ms=10000  # optional
         )
-        print(f"🔥 OverheatDetector consuming from: {self.topic}")
+
+        print(f"🔥 OverheatDetector consuming from: {self.topic}", flush=True)
 
         for msg in consumer:
             value = msg.value
             features = value.get("input")
+            # ✅ 메시지 수신 확인
+            print(f"📥 [Agent] Received message with len={len(features) if features else 'None'}", flush=True)
+            
             if not features or len(features) != self.sequence_length:
                 continue
 
@@ -67,6 +77,6 @@ class Agent:
                     self.train_step()
                     self.export_onnx()
                 except Exception as e:
-                    print(f"❌ Train error: {e}")
+                    print(f"❌ Train error: {e}", flush=True)
                 finally:
                     self.batch.clear()

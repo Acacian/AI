@@ -4,6 +4,7 @@ import importlib.util
 import multiprocessing
 
 def load_and_run_agent(config_path: str):
+    print(f"🧪 에이전트 로드 시작: {config_path}", flush=True)
     agent_dir = os.path.dirname(config_path)
     agent_module_path = os.path.join(agent_dir, "agent.py")
 

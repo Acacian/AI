@@ -2,8 +2,6 @@ import time
 import yaml
 from fetcher import fetch_kline
 from scheduler import Scheduler
-from labeler.pattern import pattern_label_strategy
-from labeler.risk import risk_label_strategy
 from publisher import publish
 
 with open("collector/config.yaml") as f:
@@ -13,6 +11,19 @@ symbols = config["symbols"]
 intervals = config["intervals"]
 limit = config.get("limit", 100)
 scheduler = Scheduler()
+
+# 현재 사용하는 agent 목록과 대응하는 토픽 명명 규칙
+topics = {
+    "liquidity_checker": "liquidity_training_{symbol}_{interval}",
+    "trend_segmenter": "trend_training_{symbol}_{interval}",
+    "noise_filter": "noise_training_{symbol}_{interval}",
+    "risk_scorer": "risk_training_{symbol}_{interval}",
+    "pattern_ae": "pattern_ae_training_{symbol}_{interval}",
+    "volume_ae": "volume_training_{symbol}_{interval}",
+    "macro_filter": "macro_training_{symbol}_{interval}",
+    "overheat_detector": "overheat_training_{symbol}_{interval}",
+    "volatility_watcher": "volatility_training_{symbol}_{interval}",
+}
 
 while True:
     start = time.time()
@@ -37,23 +48,14 @@ while True:
                 for k in klines
             ]
 
-            # 패턴 라벨
-            pattern_topic = f"ai_pattern_training_{symbol.lower()}_{interval}"
-            pattern_target = pattern_label_strategy(klines)
-            publish(pattern_topic, {
-                "input": features,
-                "target": pattern_target
-            })
+            for agent, topic_tpl in topics.items():
+                topic = topic_tpl.format(symbol=symbol.lower(), interval=interval)
+                publish(topic, {
+                    "input": features,
+                    "target": 0  # AE 계열은 항상 0, LSTM은 나중에 조정
+                })
 
-            # 리스크 라벨
-            risk_topic = f"ai_risk_training_{symbol.lower()}_{interval}"
-            risk_target = risk_label_strategy(klines)
-            publish(risk_topic, {
-                "input": features,
-                "target": risk_target
-            })
-
-            print(f"🟢 {symbol}-{interval} | Pattern: {pattern_target} | Risk: {risk_target}")
+            print(f"🟢 {symbol}-{interval} | All agent topics published")
 
     elapsed = time.time() - start
     time.sleep(max(0, 60 - elapsed))

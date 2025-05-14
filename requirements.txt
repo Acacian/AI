@@ -1,6 +1,7 @@
 # FastAPI 웹서버
 fastapi
 uvicorn[standard]
+requests
 
 # Kafka 통신
 kafka-python
@@ -13,6 +14,7 @@ tritonclient[http]
 torch
 onnx
 
-# Data 처리 및 생성
+# ML/통계 처리용
 numpy
-requests
+polars
+scikit-learn

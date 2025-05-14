@@ -1,6 +1,6 @@
 topic: overheat_training_btcusdt_1m
 model_path: /models/overheat_detector/1/model.onnx
-batch_size: 32
+batch_size: 3
 learning_rate: 0.001
 input_dim: 5
 sequence_length: 100
