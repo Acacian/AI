@@ -2,11 +2,12 @@ import os
 import json
 import yaml
 from kafka import KafkaConsumer
-from gateway.triton_client import send_to_triton
-from gateway.kafka_producer import send_message
+from gateway.triton.triton_client import TritonClient
+from gateway.kafka.kafka_producer import send_message
 
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
 CONFIG_PATH = os.getenv("GATEWAY_CONFIG", "gateway/config.yaml")
+triton = TritonClient()
 
 # 구성 로딩
 with open(CONFIG_PATH, 'r') as f:
@@ -48,7 +49,7 @@ def consume_loop():
             continue
 
         try:
-            result = send_to_triton(model_name, data)
+            result = triton.infer(model_name, data)
             print(f"✅ [{topic}] → {model_name} 결과: {result}")
 
             next_topic = next_topic_map.get(topic)

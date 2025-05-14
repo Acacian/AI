@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from gateway.kafka_consumer import consume_loop
+from gateway.kafka.kafka_consumer import consume_loop
 import threading
 
 @asynccontextmanager

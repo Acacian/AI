@@ -18,12 +18,14 @@ topics = {
     "trend_segmenter": "trend_training_{symbol}_{interval}",
     "noise_filter": "noise_training_{symbol}_{interval}",
     "risk_scorer": "risk_training_{symbol}_{interval}",
-    "pattern_ae": "pattern_ae_training_{symbol}_{interval}",
+    "pattern": "pattern_training_{symbol}_{interval}",
     "volume_ae": "volume_training_{symbol}_{interval}",
     "macro_filter": "macro_training_{symbol}_{interval}",
     "overheat_detector": "overheat_training_{symbol}_{interval}",
     "volatility_watcher": "volatility_training_{symbol}_{interval}",
 }
+
+has_printed_topics = False
 
 while True:
     start = time.time()
@@ -52,10 +54,16 @@ while True:
                 topic = topic_tpl.format(symbol=symbol.lower(), interval=interval)
                 publish(topic, {
                     "input": features,
-                    "target": 0  # AE 계열은 항상 0, LSTM은 나중에 조정
+                    "target": 0
                 })
 
-            print(f"🟢 {symbol}-{interval} | All agent topics published")
+            if not has_printed_topics:
+                print(f"📦 Published topics for {symbol}-{interval}:")
+                for topic in [topic_tpl.format(symbol=symbol.lower(), interval=interval) for topic_tpl in topics.values()]:
+                    print(f"  - {topic}")
+                has_printed_topics = True
+
+            print(f"🟢 {symbol}-{interval} | Published to {len(topics)} agents")
 
     elapsed = time.time() - start
     time.sleep(max(0, 60 - elapsed))

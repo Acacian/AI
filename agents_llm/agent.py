@@ -3,10 +3,14 @@ import json
 import yaml
 import requests
 from kafka import KafkaConsumer, KafkaProducer
+from gateway.triton.triton_client import TritonClient
 
 # 설정 로딩
 with open("agents_llm/config.yaml", "r") as f:
     config = yaml.safe_load(f)
+
+# Triton client 초기화
+triton = TritonClient()
 
 # Kafka 설정
 consumer = KafkaConsumer(
@@ -22,15 +26,15 @@ producer = KafkaProducer(
     value_serializer=lambda v: json.dumps(v).encode("utf-8"),
 )
 
-# 프롬프트 생성
-def build_prompt(data: dict) -> str:
+# 프롬프트 생성 함수
+def build_prompt(signal_data: dict) -> str:
     try:
-        return config["prompt_template"].format(**data)
+        return config["prompt_template"].format(**signal_data)
     except KeyError as e:
         missing = str(e).strip("'")
         raise ValueError(f"프롬프트 생성 실패: 누락된 필드 '{missing}'")
 
-# LLM 서버 호출
+# LLM 호출 함수
 def query_llm(prompt: str) -> str:
     res = requests.post(config["llm_api_url"], json={
         "model": config["model_name"],
@@ -42,7 +46,7 @@ def query_llm(prompt: str) -> str:
 
     if res.status_code != 200:
         raise RuntimeError(f"LLM 응답 오류: {res.status_code}, {res.text}")
-    
+
     result = res.json()
     return result.get("choices", [{}])[0].get("text", "").strip()
 
@@ -52,12 +56,20 @@ def run():
     for msg in consumer:
         try:
             data = msg.value
-            prompt = build_prompt(data)
+            if "input" not in data:
+                print(f"⚠️ 'input' 필드 누락됨: {data}", flush=True)
+                continue
+
+            # signal feature 기반 추론
+            models = ["pattern_ae", "risk_scorer", "volume_ae", "trend_segmenter", "volatility_watcher"]
+            signal = triton.infer_signal(data, models)
+            prompt = build_prompt(signal)
             decision = query_llm(prompt)
             print(f"✅ 전략 결정: {decision}", flush=True)
 
             producer.send(config["output_topic"], {
                 "input": data,
+                "signal": signal,
                 "decision": decision,
                 "raw_prompt": prompt
             })
