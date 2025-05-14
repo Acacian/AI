@@ -1,4 +1,3 @@
-import os
 import json
 import yaml
 import requests
@@ -15,14 +14,14 @@ triton = TritonClient()
 # Kafka 설정
 consumer = KafkaConsumer(
     config["listen_topic"],
-    bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
+    bootstrap_servers=config.get("kafka_broker", "kafka:9092"),
     group_id=config.get("group_id", "llm_agent_group"),
     value_deserializer=lambda m: json.loads(m.decode("utf-8")),
     auto_offset_reset="latest",
 )
 
 producer = KafkaProducer(
-    bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
+    bootstrap_servers=config.get("kafka_broker", "kafka:9092"),
     value_serializer=lambda v: json.dumps(v).encode("utf-8"),
 )
 

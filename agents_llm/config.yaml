@@ -2,6 +2,7 @@
 listen_topic: ai_intermediate_outputs
 output_topic: ai_llm_decision_outputs
 group_id: llm_agent_group
+kafka_broker: kafka:9092
 
 # LLM 서버 설정
 llm_api_url: http://vllm-server:8000/v1/completions

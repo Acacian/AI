@@ -8,19 +8,22 @@
 
 여러 Agent에서 데이터를 기준으로 한 실시간 판단을 Kafka를 통해 Triton으로 보냅니다.  
 Triton은 이를 분석하여, 추론에 대한 결과를 자체적인 LLM에 보내 평가를 받습니다.  
-LLM은 이를 토대로 전략을 구상하고 필요 시 Loop를 통해 재학습을 시도합니다.
+LLM은 이를 토대로 의사결정을 진행하며 MPC Agents에서 비율, 진입 시점 등을 고려합니다.  
+이후 실제 수익률 결과를 기반으로 LLM 모델의 재학습을 통해 더 나은 투자결과를 도출해냅니다.
 
 ## Module
 
 모든 모듈들은 Docker를 통해 관리됩니다. 배포 목적이 아직 없어, Kubernetes는 사용하지 않았습니다.
 
-1. Collector : Binance API를 통해 실시간으로 데이터를 가져옵니다.
-2. Agents_1M : 여러 개의 Agents로 이루어져 있으며, LLM에서 사용할 전략에 필요한 요소들을 산출합니다.
+1. Collector : Binance API를 통해 실시간으로 데이터를 가져옵니다. 과거 데이터를 backfill하여 사용합니다.
+2. Agents_Basket : 여러 개의 Agents로 이루어져 있으며, LLM에서 사용할 전략에 필요한 요소들을 산출합니다.
 3. Agents_LLM : GPU를 사용하는 LLM Agents이며, 여러 Agents 응답을 토대로 실질적인 전략을 선택하는 Agents입니다.
 4. Agents_MPC : 포지션 비율, 진입 시점, 슬리피지 등을 고려해 최적의 실행 시점과 수량을 산출하는 Agents입니다.
 5. Multi_Agent_Runner : 여러 Agents들을 하나의 Container에서 동작하게 해 주는 모듈입니다.
 6. Gateway : 내부적으로 Agents끼리 통신하기 위한 Kafka, 추론을 위한 Triton 서버에 보내는 설정 등을 설정하는 모듈입니다.
 7. Backtester : 백테스팅을 위한 모듈입니다.
+
+최종 순서 : Agents_Basket > Triton > Agents_LLM > Agents_MPC > Backtester
 
 ## Architecture
 
