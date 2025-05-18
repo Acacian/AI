@@ -16,14 +16,25 @@ LLM은 이를 토대로 의사결정을 진행하며 MPC Agents에서 비율, �
 모든 모듈들은 Docker를 통해 관리됩니다. 배포 목적이 아직 없어, Kubernetes는 사용하지 않았습니다.
 
 1. Collector : Binance API를 통해 실시간으로 데이터를 가져옵니다. 과거 데이터를 backfill하여 사용합니다.
-2. Agents_Basket : 여러 개의 Agents로 이루어져 있으며, LLM에서 사용할 전략에 필요한 요소들을 산출합니다.
+2. Agents_Basket : 여러 개의 Agents를 통해 LLM에서 사용할 전략에 필요한 요소들을 산출합니다. Multi_Agent_runner 컨테이너를 통해 독립적인 프로세스로 실행됩니다.
 3. Agents_LLM : GPU를 사용하는 LLM Agents이며, 여러 Agents 응답을 토대로 실질적인 전략을 선택하는 Agents입니다.
 4. Agents_MPC : 포지션 비율, 진입 시점, 슬리피지 등을 고려해 최적의 실행 시점과 수량을 산출하는 Agents입니다.
-5. Multi_Agent_Runner : 여러 Agents들을 하나의 Container에서 동작하게 해 주는 모듈입니다.
+5. Multi_Agent_Runner : Agents_Basket 내의 각 Agents들을 독립적인 프로세스로 실행하는 멀티 프로세싱 런처 역할을 합니다.
 6. Gateway : 내부적으로 Agents끼리 통신하기 위한 Kafka, 추론을 위한 Triton 서버에 보내는 설정 등을 설정하는 모듈입니다.
 7. Backtester : 백테스팅을 위한 모듈입니다.
 
 최종 순서 : Agents_Basket > Triton > Agents_LLM > Agents_MPC > Backtester
+
+## Settings
+
+언어 : Python / FastApi  
+가상환경 : Docker / Docker Compose  
+고속 데이터프레임 처리 : Polars(Pandas의 느린 처리속도를 대체)  
+멀티 AI 통신 : Redis, Kafka  
+전략 조율 : LLM(LLAMA)  
+추론 : triton(Agents에서 만든 ONNX 파일을 Polling 해서 사용)  
+학습 : torch
+데이터베이스 : Parquet(배포 예정 없음)
 
 ## Architecture
 
@@ -82,16 +93,6 @@ flowchart TD
   end
 ```
 
-## Settings
-
-언어 : Python / FastApi  
-가상환경 : Docker / Docker Compose  
-고속 데이터프레임 처리 : Polars(Pandas의 느린 처리속도를 대체)  
-멀티 AI 통신 : Redis, Kafka  
-전략 조율 : LLM(LLAMA)  
-추론 : triton(Agents에서 만든 ONNX 파일을 Polling 해서 사용)  
-학습 : torch
-
 ## Port
 
 ## Env
@@ -108,6 +109,4 @@ Binance_Secret :
 ## 참고사항
 
 1. GPU를 사용하기 때문에 최소한의 하드웨어가 필수입니다. (현 개발환경 : NVIDIA RTX 4060 Ti/CUDA Version: 12.6)
-2. 실행법을 반드시 참고해서 설치 및 실행하시기 바랍니다.  
-   최초 실행 시 vllm 컨테이너가 Hugging Face에서 모델을 다운로드하기 때문에,  
-   로컬에 vllm_models 폴더가 생성되며 이는 정상 의도된 동작입니다.
+2. 실행법을 반드시 참고해서 설치 및 실행하시기 바랍니다. 최초 실행 시 vllm 컨테이너가 Hugging Face에서 모델을 다운로드하기 때문에 로컬에 vllm_models 폴더가 생성되며 이는 정상 의도된 동작입니다.
