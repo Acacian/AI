@@ -98,7 +98,7 @@ services:
     restart: always
 
   triton:
-    image: nvcr.io/nvidia/tritonserver:23.03-py3
+    image: nvcr.io/nvidia/tritonserver:24.03-py3
     container_name: triton-inference
     depends_on:
       - multi-agent-runner

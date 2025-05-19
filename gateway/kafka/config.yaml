@@ -1,9 +1,17 @@
 topics:
-  volume_infer_btcusdt_1m: volume_ae
-  trend_infer_btcusdt_1m: trend_segmenter
-  risk_infer_btcusdt_1m: risk_scorer
+  liquidity_training_btcusdt_1m: liquidity_checker
+  trend_training_btcusdt_1m: trend_segmenter
+  noise_training_btcusdt_1m: noise_filter
+  risk_training_btcusdt_1m: risk_scorer
+  pattern_training_btcusdt_1m: pattern
+  volume_training_btcusdt_1m: volume_ae
+  macro_training_btcusdt_1m: macro_filter
+  overheat_training_btcusdt_1m: overheat_detector
+  volatility_training_btcusdt_1m: volatility_watcher
 
 routing:
-  volume_infer_btcusdt_1m: risk_infer_btcusdt_1m
-  trend_infer_btcusdt_1m: risk_infer_btcusdt_1m
-  risk_infer_btcusdt_1m: signal_input_btcusdt_1m
+  liquidity_training_btcusdt_1m: risk_training_btcusdt_1m
+  trend_training_btcusdt_1m: risk_training_btcusdt_1m
+  noise_training_btcusdt_1m: risk_training_btcusdt_1m
+  macro_training_btcusdt_1m: risk_training_btcusdt_1m
+  risk_training_btcusdt_1m: signal_input_btcusdt_1m

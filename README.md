@@ -16,14 +16,16 @@ LLM은 이를 토대로 의사결정을 진행하며 MPC Agents에서 비율, �
 모든 모듈들은 Docker를 통해 관리됩니다. 배포 목적이 아직 없어, Kubernetes는 사용하지 않았습니다.
 
 1. Collector : Binance API를 통해 실시간으로 데이터를 가져옵니다. 과거 데이터를 backfill하여 사용합니다.
-2. Agents_Basket : 여러 개의 Agents를 통해 LLM에서 사용할 전략에 필요한 요소들을 산출합니다. Multi_Agent_runner 컨테이너를 통해 독립적인 프로세스로 실행됩니다.
-3. Agents_LLM : GPU를 사용하는 LLM Agents이며, 여러 Agents 응답을 토대로 실질적인 전략을 선택하는 Agents입니다.
+2. Agents_Basket : 여러 개의 Agents를 통해 LLM에서 사용할 전략에 필요한 요소들을 산출합니다.  
+   Multi_Agent_runner 컨테이너를 통해 독립적인 프로세스로 실행됩니다.
+3. Agents_LLM : GPU를 사용하는 LLM Agents이며, 여러 Agents 응답을 토대로 실질적인 전략을  
+   선택하는 Agents입니다.
 4. Agents_MPC : 포지션 비율, 진입 시점, 슬리피지 등을 고려해 최적의 실행 시점과 수량을 산출하는 Agents입니다.
-5. Multi_Agent_Runner : Agents_Basket 내의 각 Agents들을 독립적인 프로세스로 실행하는 멀티 프로세싱 런처 역할을 합니다.
-6. Gateway : 내부적으로 Agents끼리 통신하기 위한 Kafka, 추론을 위한 Triton 서버에 보내는 설정 등을 설정하는 모듈입니다.
+5. Multi_Agent_Runner : Agents_Basket 내의 각 Agents들을 독립적인 프로세스로 실행하는
+   멀티 프로세싱 런처 역할을 합니다.
+6. Gateway : 내부적으로 Agents끼리 통신하기 위한 Kafka, 추론을 위한 Triton 서버에 보내는
+   설정 등을 설정하는 모듈입니다.
 7. Backtester : 백테스팅을 위한 모듈입니다.
-
-최종 순서 : Agents_Basket > Triton > Agents_LLM > Agents_MPC > Backtester
 
 ## Settings
 
@@ -34,7 +36,7 @@ LLM은 이를 토대로 의사결정을 진행하며 MPC Agents에서 비율, �
 전략 조율 : LLM(LLAMA)  
 추론 : triton(Agents에서 만든 ONNX 파일을 Polling 해서 사용)  
 학습 : torch
-데이터베이스 : Parquet(배포 예정 없음)
+데이터베이스 : DuckDB, Parquet(배포 예정 없음)
 
 ## Architecture
 
@@ -104,7 +106,8 @@ Binance_Secret :
 
 1. env 파일을 생성한 후, 위에 있는 환경변수들의 Key에 맞는 Value를 입력합니다.
 2. 프로젝트 Root에 models 폴더를 만들어야 합니다. Onnx가 동적으로 저장되므로, 반드시 완전히 빈 폴더여야 합니다.
-3. docker-compose --env-file .env up -d --build 명령어를 통해 가상환경에서 AI를 작동시킵니다.
+3. 위와 마찬가지로 데이터 저장을 위한 data 폴더를 만들어줍니다. 마찬가지로 완전히 빈 폴더여야 합니다.
+4. docker-compose up -d --build 명령어를 통해 가상환경에서 AI를 작동시킵니다.
 
 ## 참고사항
 

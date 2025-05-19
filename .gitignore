@@ -1,3 +1,4 @@
 .env
 /models
 /vllm_models
+/data

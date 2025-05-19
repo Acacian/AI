@@ -4,4 +4,4 @@ batch_size: 32
 learning_rate: 0.001
 input_dim: 5
 sequence_length: 100
-hidden_size: 64
+d_model: 64

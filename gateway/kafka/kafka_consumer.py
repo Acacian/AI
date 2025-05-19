@@ -6,7 +6,7 @@ from gateway.triton.triton_client import TritonClient
 from gateway.kafka.kafka_producer import send_message
 
 KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
-CONFIG_PATH = os.getenv("GATEWAY_CONFIG", "gateway/config.yaml")
+CONFIG_PATH = os.getenv("GATEWAY_CONFIG", "gateway/kafka/config.yaml")
 triton = TritonClient()
 
 # 구성 로딩

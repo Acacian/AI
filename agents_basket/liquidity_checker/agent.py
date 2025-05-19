@@ -1,13 +1,14 @@
 import os
 import sys
-import yaml
 import json
+import yaml
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from kafka import KafkaConsumer
+from model import TransformerAE
+
 sys.path.append(os.path.dirname(__file__))
-from model import AEModel
 
 class Agent:
     def __init__(self, config_path: str):
@@ -20,22 +21,29 @@ class Agent:
         self.learning_rate = self.config.get('learning_rate', 1e-3)
         self.sequence_length = self.config.get('sequence_length', 100)
         self.input_dim = self.config.get('input_dim', 5)
+        self.d_model = self.config.get('d_model', 64)
+        self.threshold = self.config.get('recon_error_threshold', 0.05)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.model = AEModel(self.input_dim, self.sequence_length).to(self.device)
+        self.model = TransformerAE(
+            input_dim=self.input_dim,
+            sequence_length=self.sequence_length,
+            d_model=self.d_model
+        ).to(self.device)
+
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
-        self.loss_fn = nn.MSELoss()
+        self.loss_fn = nn.MSELoss(reduction="none")
         self.batch = []
 
     def train_step(self):
         self.model.train()
         x = torch.tensor(self.batch, dtype=torch.float32).to(self.device)
         recon = self.model(x)
-        loss = self.loss_fn(recon, x)
+        loss = self.loss_fn(recon, x).mean()
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
-        print(f"💧 Liquidity AE Loss: {loss.item():.6f}")
+        print(f"💧 Transformer AE Loss: {loss.item():.6f}")
 
     def export_onnx(self):
         self.model.eval()
@@ -45,9 +53,18 @@ class Agent:
             self.model, dummy_input, self.model_path,
             input_names=["INPUT"], output_names=["OUTPUT"],
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
-            opset_version=11
+            opset_version=13
         )
         print(f"✅ ONNX Exported: {self.model_path}")
+
+    def compute_recon_score(self, x_batch):
+        self.model.eval()
+        with torch.no_grad():
+            x = torch.tensor(x_batch, dtype=torch.float32).to(self.device)
+            recon = self.model(x)
+            error = (x - recon).pow(2).mean(dim=(1, 2))
+            scores = (error > self.threshold).float()
+        return error.tolist(), scores.tolist()
 
     def run(self):
         consumer = KafkaConsumer(
@@ -55,13 +72,12 @@ class Agent:
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
             value_deserializer=lambda v: json.loads(v.decode("utf-8")),
             auto_offset_reset="latest",
-            group_id="liquidity_checker_group"
+            group_id="liquidity_detector_group"
         )
-        print(f"🟢 LiquidityChecker consuming from: {self.topic}")
+        print(f"🔵 LiquidityDetector consuming from: {self.topic}")
 
         for msg in consumer:
-            value = msg.value
-            features = value.get("input")
+            features = msg.value.get("input")
             if not features or len(features) != self.sequence_length:
                 continue
 
@@ -69,6 +85,9 @@ class Agent:
             if len(self.batch) >= self.batch_size:
                 try:
                     self.train_step()
+                    recon_errors, flags = self.compute_recon_score(self.batch)
+                    for err, flag in zip(recon_errors, flags):
+                        print(f"  ✨ Error: {err:.4f} | Anomaly: {'❌' if flag else '✅'}")
                     self.export_onnx()
                 except Exception as e:
                     print(f"❌ Train error: {e}")

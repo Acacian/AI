@@ -1,5 +1,6 @@
 import time
 import yaml
+from datetime import datetime
 from fetcher import fetch_kline
 from scheduler import Scheduler
 from publisher import publish
@@ -12,7 +13,10 @@ intervals = config["intervals"]
 limit = config.get("limit", 100)
 scheduler = Scheduler()
 
-# 현재 사용하는 agent 목록과 대응하는 토픽 명명 규칙
+# 테스트 또는 백필용 날짜
+target_date_str = config.get("target_date")
+target_date = datetime.strptime(target_date_str, "%Y-%m-%d") if target_date_str else None
+
 topics = {
     "liquidity_checker": "liquidity_training_{symbol}_{interval}",
     "trend_segmenter": "trend_training_{symbol}_{interval}",
@@ -32,7 +36,9 @@ while True:
     for symbol in symbols:
         for interval in intervals:
             print(f"📡 Try fetch: {symbol}-{interval}", flush=True)
-            klines = fetch_kline(symbol, interval, limit)
+
+            date_str = target_date.strftime("%Y-%m-%d") if target_date else None
+            klines = fetch_kline(symbol, interval, limit, date_str=date_str)
             if not klines:
                 print(f"❌ No data fetched for {symbol}-{interval}", flush=True)
                 continue
@@ -53,8 +59,7 @@ while True:
             for agent, topic_tpl in topics.items():
                 topic = topic_tpl.format(symbol=symbol.lower(), interval=interval)
                 publish(topic, {
-                    "input": features,
-                    "target": 0
+                    "input": features
                 })
 
             if not has_printed_topics:
@@ -64,6 +69,10 @@ while True:
                 has_printed_topics = True
 
             print(f"🟢 {symbol}-{interval} | Published to {len(topics)} agents")
+
+    if target_date:
+        print("✅ 날짜 기반 테스트 완료. 루프 종료.")
+        break
 
     elapsed = time.time() - start
     time.sleep(max(0, 60 - elapsed))
