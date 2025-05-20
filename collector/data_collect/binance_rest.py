@@ -14,6 +14,12 @@ def fetch_binance_symbol(symbol: str, interval: str, limit: int = 1000, date_str
         params["startTime"] = int(start_dt.timestamp() * 1000)
         params["endTime"] = int(end_dt.timestamp() * 1000)
 
+    if date_str and interval == "1d":
+        today_str = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+        if date_str >= today_str:
+            print(f"⚠️ {symbol}-{interval} | {date_str} 일봉은 Binance에서 아직 제공되지 않음 (skip)")
+            return None
+
     for attempt in range(3):
         try:
             response = requests.get(BINANCE_API_URL, params=params, timeout=5)

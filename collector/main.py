@@ -1,5 +1,4 @@
-import time
-import yaml
+import time, yaml, re
 from datetime import datetime
 from collector.data_collect.binance_rest import fetch_binance_symbol
 from collector.data_collect.yahoo_rest import fetch_macro_symbol
@@ -31,6 +30,9 @@ topics = {
 }
 
 has_printed_topics = False
+
+def kafka_safe_symbol(symbol: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9._-]", "_", symbol.lower())
 
 while True:
     start = time.time()
@@ -86,7 +88,7 @@ while True:
         features = preprocess_ohlcv(raw_features) 
 
         for agent, topic_tpl in topics.items():
-            topic = topic_tpl.format(symbol=symbol.lower(), interval=interval)
+            topic = topic_tpl.format(symbol=kafka_safe_symbol(symbol), interval=interval)
             publish(topic, {"input": features})
 
         print(f"🟢 [MACRO] {symbol}-{interval} | Published to {len(topics)} agents")
@@ -97,3 +99,4 @@ while True:
 
     elapsed = time.time() - start
     time.sleep(max(0, 60 - elapsed))
+

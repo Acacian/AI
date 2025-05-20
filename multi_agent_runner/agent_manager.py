@@ -26,7 +26,9 @@ def load_and_run_agent(config_path: str):
 def get_all_agent_configs(base_path="agents_basket"):
     config_files = []
     for dir_name in os.listdir(base_path):
-        config_path = os.path.join(base_path, dir_name, "config.yaml")
-        if os.path.isfile(config_path):
-            config_files.append(config_path)
+        for ext in ["config.yaml", "config.yml"]:
+            config_path = os.path.join(base_path, dir_name, ext)
+            if os.path.isfile(config_path):
+                config_files.append(config_path)
+                break  # 하나만 찾으면 됨
     return config_files

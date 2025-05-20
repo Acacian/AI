@@ -4,7 +4,6 @@ binance_symbols:
   - SOLUSDT
 
 macro_symbols:
-  - "^BTC.D" # BTC Dominance
   - "^GSPC" # S&P500
   - "^TNX" # 10Y US Treasury
   - "GC=F" # Gold Futures

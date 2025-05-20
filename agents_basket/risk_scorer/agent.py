@@ -6,9 +6,15 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from kafka import KafkaConsumer
-from model import RiskScorerTransformer
+import importlib.util
 
-sys.path.append(os.path.dirname(__file__))
+current_dir = os.path.dirname(__file__)
+model_path = os.path.join(current_dir, "model.py")
+spec = importlib.util.spec_from_file_location("model_module", model_path)
+model_module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(model_module)
+
+RiskScorerTransformer = model_module.RiskScorerTransformer
 
 class Agent:
     def __init__(self, config_path):
