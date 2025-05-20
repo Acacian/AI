@@ -1,0 +1,8 @@
+topic: orderbook_training_btcusdt
+model_path: /models/orderbook_agent/model.onnx
+batch_size: 32
+learning_rate: 0.001
+input_dim: 40 # 20 bids + 20 asks (price, qty)
+sequence_length: 100
+d_model: 64
+recon_error_threshold: 0.05

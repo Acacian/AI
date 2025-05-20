@@ -1,7 +1,9 @@
 import os, json, datetime, yaml
 from tqdm import tqdm
-from collector.fetcher import fetch_kline
 import polars as pl
+from collector.data_collect.binance_rest import fetch_binance_symbol
+from collector.data_collect.yahoo_rest import fetch_macro_symbol
+from collector.data_processing.pre_processing import preprocess_ohlcv
 
 CONFIG_PATH = "collector/config.yml"
 META_PATH = "data/last_ts.json"
@@ -9,7 +11,10 @@ META_PATH = "data/last_ts.json"
 with open(CONFIG_PATH, "r") as f:
     config = yaml.safe_load(f)
 
-SYMBOLS = config["symbols"]
+BINANCE_SYMBOLS = config.get("binance_symbols", [])
+MACRO_SYMBOLS = config.get("macro_symbols", [])
+SYMBOLS = BINANCE_SYMBOLS + MACRO_SYMBOLS
+
 INTERVALS = config["intervals"]
 LIMIT = config.get("limit", 100)
 RETENTION_DAYS = config.get("retention_days", 90)
@@ -18,13 +23,13 @@ def get_paths(symbol: str, interval: str):
     data_dir = f"data/{interval}"
     return data_dir, META_PATH
 
-def save_parquet(file_path: str, klines: list[dict]):
-    if not klines:
+def save_parquet(file_path: str, rows: list[dict]):
+    if not rows:
         print(f"⚠️ 저장할 데이터 없음: {file_path}")
         return
-    df = pl.DataFrame(klines)
+    df = pl.DataFrame(rows)
     df.write_parquet(file_path)
-    print(f"💾 저장 완료: {file_path} ({len(klines)} rows)")
+    print(f"💾 저장 완료: {file_path} ({len(rows)} rows)")
 
 def load_last_timestamp(meta_path: str, key: str):
     if not os.path.exists(meta_path):
@@ -71,9 +76,31 @@ def backfill(symbol: str, interval: str):
             if os.path.exists(file_path):
                 pbar.set_postfix_str(f"✅ Skip {date_str}")
             else:
-                klines = fetch_kline(symbol, interval, LIMIT, date_str)
+                if symbol in MACRO_SYMBOLS:
+                    klines = fetch_macro_symbol(symbol, LIMIT, date_str)
+                else:
+                    klines = fetch_binance_symbol(symbol, interval, LIMIT, date_str)
+
                 if klines:
-                    save_parquet(file_path, klines)
+                    raw = [[k["open"], k["high"], k["low"], k["close"], k["volume"]] for k in klines]
+                    processed = preprocess_ohlcv(raw)
+
+                    # 전처리 결과를 klines에 반영하여 저장
+                    processed_rows = [
+                        {
+                            "timestamp": k["timestamp"],
+                            "symbol": k["symbol"],
+                            "interval": k["interval"],
+                            "open": row[0],
+                            "high": row[1],
+                            "low": row[2],
+                            "close": row[3],
+                            "volume": row[4],
+                        }
+                        for k, row in zip(klines, processed)
+                    ]
+
+                    save_parquet(file_path, processed_rows)
                     save_last_timestamp(meta_path, key, klines[-1]["timestamp"])
                     pbar.set_postfix_str(f"📥 Saved {date_str}")
                 else:
@@ -86,4 +113,6 @@ def backfill(symbol: str, interval: str):
 if __name__ == "__main__":
     for symbol in SYMBOLS:
         for interval in INTERVALS:
+            if symbol in MACRO_SYMBOLS and interval != "1d":
+                continue
             backfill(symbol, interval)

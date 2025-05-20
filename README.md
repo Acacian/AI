@@ -15,7 +15,9 @@ LLM은 이를 토대로 의사결정을 진행하며 MPC Agents에서 비율, �
 
 모든 모듈들은 Docker를 통해 관리됩니다. 배포 목적이 아직 없어, Kubernetes는 사용하지 않았습니다.
 
-1. Collector : Binance API를 통해 실시간으로 데이터를 가져옵니다. 과거 데이터를 backfill하여 사용합니다.
+1. Collector : Binance API/Websocket, Yahoo API를 통해 실시간으로 데이터를 가져옵니다.
+   과거 데이터를 backfill하여 사용하며 데이터의 의미 있는 비교 및 학습을 위해 전처리까지 한 이후
+   Kafka를 이용해 Agent에 송출합니다.
 2. Agents_Basket : 여러 개의 Agents를 통해 LLM에서 사용할 전략에 필요한 요소들을 산출합니다.  
    Multi_Agent_runner 컨테이너를 통해 독립적인 프로세스로 실행됩니다.
 3. Agents_LLM : GPU를 사용하는 LLM Agents이며, 여러 Agents 응답을 토대로 실질적인 전략을  
@@ -26,6 +28,16 @@ LLM은 이를 토대로 의사결정을 진행하며 MPC Agents에서 비율, �
 6. Gateway : 내부적으로 Agents끼리 통신하기 위한 Kafka, 추론을 위한 Triton 서버에 보내는
    설정 등을 설정하는 모듈입니다.
 7. Backtester : 백테스팅을 위한 모듈입니다.
+
+## Learning & Detecting Data
+
+1. Binance OHLCV
+2. Yahoo Data(금, S&P 500, 채권 등)
+3. Binance Orderbook
+
+## Data Preprocessing Strategy
+
+1.
 
 ## Settings
 

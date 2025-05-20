@@ -1,0 +1,8 @@
+topic: macro_training_^gspc_1d
+model_path: /models/macro_filter_gspc/model.onnx
+batch_size: 32
+learning_rate: 0.001
+input_dim: 5
+sequence_length: 100
+d_model: 64
+recon_error_threshold: 0.05

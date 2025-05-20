@@ -15,14 +15,15 @@ class Agent:
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
 
-        self.topic = self.config["topic"]
-        self.model_path = self.config["model_path"]
+        self.topic = self.config["topic"]             
+        self.model_path = self.config["model_path"]              
         self.batch_size = self.config.get("batch_size", 32)
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
-        self.input_dim = self.config.get("input_dim", 3)
+        self.input_dim = self.config.get("input_dim", 5)  
         self.d_model = self.config.get("d_model", 64)
         self.threshold = self.config.get("recon_error_threshold", 0.05)
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.model = TransformerAE(

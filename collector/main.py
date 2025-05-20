@@ -1,22 +1,23 @@
 import time
 import yaml
 from datetime import datetime
-from fetcher import fetch_kline
-from scheduler import Scheduler
-from publisher import publish
+from collector.data_collect.binance_rest import fetch_binance_symbol
+from collector.data_collect.yahoo_rest import fetch_macro_symbol
+from collector.scheduler import Scheduler
+from collector.publisher import publish
+from collector.data_processing.pre_processing import preprocess_ohlcv
 
-with open("collector/config.yaml") as f:
+with open("collector/config.yml") as f:
     config = yaml.safe_load(f)
 
-symbols = config["symbols"]
+binance_symbols = config.get("binance_symbols", [])
+macro_symbols = config.get("macro_symbols", [])
 intervals = config["intervals"]
 limit = config.get("limit", 100)
-scheduler = Scheduler()
-
-# 테스트 또는 백필용 날짜
 target_date_str = config.get("target_date")
 target_date = datetime.strptime(target_date_str, "%Y-%m-%d") if target_date_str else None
 
+scheduler = Scheduler()
 topics = {
     "liquidity_checker": "liquidity_training_{symbol}_{interval}",
     "trend_segmenter": "trend_training_{symbol}_{interval}",
@@ -33,34 +34,29 @@ has_printed_topics = False
 
 while True:
     start = time.time()
-    for symbol in symbols:
-        for interval in intervals:
-            print(f"📡 Try fetch: {symbol}-{interval}", flush=True)
 
+    # Binance 심볼 루프
+    for symbol in binance_symbols:
+        for interval in intervals:
+            print(f"📡 [BINANCE] Try fetch: {symbol}-{interval}")
             date_str = target_date.strftime("%Y-%m-%d") if target_date else None
-            klines = fetch_kline(symbol, interval, limit, date_str=date_str)
-            if not klines:
-                print(f"❌ No data fetched for {symbol}-{interval}", flush=True)
-                continue
-            if len(klines) < 3:
-                print(f"⚠️ Too short: {symbol}-{interval} | len={len(klines)}", flush=True)
+            klines = fetch_binance_symbol(symbol, interval, limit, date_str)
+
+            if not klines or len(klines) < 3:
+                print(f"⚠️ No data or too short: {symbol}-{interval}")
                 continue
 
             ts = klines[-1]["timestamp"]
             if not scheduler.should_fetch(symbol, interval, ts):
-                print(f"🕒 Skip duplicate fetch: {symbol}-{interval} | ts={ts}", flush=True)
+                print(f"🕒 Skip duplicate fetch: {symbol}-{interval} | ts={ts}")
                 continue
 
-            features = [
-                [k["open"], k["high"], k["low"], k["close"], k["volume"]]
-                for k in klines
-            ]
+            raw_features = [[k["open"], k["high"], k["low"], k["close"], k["volume"]] for k in klines]
+            features = preprocess_ohlcv(raw_features) 
 
             for agent, topic_tpl in topics.items():
                 topic = topic_tpl.format(symbol=symbol.lower(), interval=interval)
-                publish(topic, {
-                    "input": features
-                })
+                publish(topic, {"input": features})
 
             if not has_printed_topics:
                 print(f"📦 Published topics for {symbol}-{interval}:")
@@ -68,7 +64,32 @@ while True:
                     print(f"  - {topic}")
                 has_printed_topics = True
 
-            print(f"🟢 {symbol}-{interval} | Published to {len(topics)} agents")
+            print(f"🟢 [BINANCE] {symbol}-{interval} | Published to {len(topics)} agents")
+
+    # Macro 심볼 루프
+    for symbol in macro_symbols:
+        interval = "1d"
+        print(f"📡 [MACRO] Try fetch: {symbol}-{interval}")
+        date_str = target_date.strftime("%Y-%m-%d") if target_date else None
+        klines = fetch_macro_symbol(symbol, limit, date_str)
+
+        if not klines or len(klines) < 3:
+            print(f"⚠️ No data or too short: {symbol}-{interval}")
+            continue
+
+        ts = klines[-1]["timestamp"]
+        if not scheduler.should_fetch(symbol, interval, ts):
+            print(f"🕒 Skip duplicate fetch: {symbol}-{interval} | ts={ts}")
+            continue
+
+        raw_features = [[k["open"], k["high"], k["low"], k["close"], k["volume"]] for k in klines]
+        features = preprocess_ohlcv(raw_features) 
+
+        for agent, topic_tpl in topics.items():
+            topic = topic_tpl.format(symbol=symbol.lower(), interval=interval)
+            publish(topic, {"input": features})
+
+        print(f"🟢 [MACRO] {symbol}-{interval} | Published to {len(topics)} agents")
 
     if target_date:
         print("✅ 날짜 기반 테스트 완료. 루프 종료.")
