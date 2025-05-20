@@ -15,14 +15,15 @@ class OrderbookAgent:
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
 
-        self.topic = self.config['topic']
-        self.model_path = self.config['model_path']
-        self.batch_size = self.config.get('batch_size', 32)
-        self.learning_rate = self.config.get('learning_rate', 1e-3)
-        self.sequence_length = self.config.get('sequence_length', 100)
-        self.input_dim = self.config.get('input_dim', 40)  # 20 bids + 20 asks
-        self.d_model = self.config.get('d_model', 64)
-        self.threshold = self.config.get('recon_error_threshold', 0.05)
+        self.topic = self.config["topic"]
+        self.model_path = self.config["model_path"]
+        self.batch_size = self.config.get("batch_size", 32)
+        self.learning_rate = self.config.get("learning_rate", 1e-3)
+        self.sequence_length = self.config.get("sequence_length", 100)
+        self.input_dim = self.config.get("input_dim", 40)  # 20 bids + 20 asks
+        self.d_model = self.config.get("d_model", 64)
+        self.threshold = self.config.get("recon_error_threshold", 0.05)
+
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.model = TransformerAE(
@@ -35,10 +36,12 @@ class OrderbookAgent:
         self.loss_fn = nn.MSELoss(reduction="none")
         self.batch = []
 
+        print(f"🚀 OrderbookAgent initialized on topic: {self.topic}")
+
     def flatten_orderbook(self, bids, asks):
-        """20개씩 잘라서 [p1, q1, p2, q2, ...] 형태로 펼침"""
+        """20개씩 잘라서 [p1, q1, p2, q2, ..., a1, q1, a2, q2, ...] 형태"""
         def flatten(side):
-            return [v for pq in side[:20] for v in pq]
+            return [v for pair in side[:20] for v in pair]
         return flatten(bids) + flatten(asks)
 
     def train_step(self):
@@ -49,7 +52,7 @@ class OrderbookAgent:
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
-        print(f"📊 Orderbook AE Loss: {loss.item():.6f}")
+        print(f"🧠 Orderbook AE Loss: {loss.item():.6f}")
 
     def compute_recon_score(self, x_batch):
         self.model.eval()
@@ -65,12 +68,15 @@ class OrderbookAgent:
         dummy_input = torch.randn(1, self.sequence_length, self.input_dim).to(self.device)
         os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
         torch.onnx.export(
-            self.model, dummy_input, self.model_path,
-            input_names=["INPUT"], output_names=["OUTPUT"],
+            self.model,
+            dummy_input,
+            self.model_path,
+            input_names=["INPUT"],
+            output_names=["OUTPUT"],
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
             opset_version=13
         )
-        print(f"✅ ONNX Exported: {self.model_path}")
+        print(f"✅ ONNX exported: {self.model_path}")
 
     def run(self):
         consumer = KafkaConsumer(
@@ -80,12 +86,13 @@ class OrderbookAgent:
             auto_offset_reset="latest",
             group_id="orderbook_agent_group"
         )
-        print(f"📥 OrderbookAgent consuming from: {self.topic}")
+        print(f"📥 Listening to Kafka topic: {self.topic}")
 
         for msg in consumer:
             data = msg.value
             bids = data.get("bids")
             asks = data.get("asks")
+
             if not bids or not asks:
                 continue
 
@@ -98,11 +105,11 @@ class OrderbookAgent:
             if len(self.batch) >= self.batch_size:
                 try:
                     self.train_step()
-                    recon_errors, flags = self.compute_recon_score(self.batch)
-                    for err, flag in zip(recon_errors, flags):
-                        print(f"  ⚡ Error: {err:.4f} | Anomaly: {'❌' if flag else '✅'}")
+                    errors, flags = self.compute_recon_score(self.batch)
+                    for err, flag in zip(errors, flags):
+                        print(f"  ⚠️ Recon Error: {err:.4f} | Anomaly: {'❌' if flag else '✅'}")
                     self.export_onnx()
                 except Exception as e:
-                    print(f"❌ Train error: {e}")
+                    print(f"❌ Training error: {e}")
                 finally:
                     self.batch.clear()

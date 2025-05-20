@@ -1,5 +1,5 @@
-import torch
 import torch.nn as nn
+import torch
 
 class TransformerAE(nn.Module):
     def __init__(self, input_dim=5, sequence_length=100, d_model=64, nhead=4, num_layers=2):
@@ -17,6 +17,6 @@ class TransformerAE(nn.Module):
         )
 
     def forward(self, x):
-        x_proj = self.input_proj(x) + self.pos_embedding
-        encoded = self.encoder(x_proj)
-        return self.decoder(encoded)
+        x = self.input_proj(x) + self.pos_embedding 
+        z = self.encoder(x)                         
+        return self.decoder(z)                        

@@ -1,9 +1,14 @@
-import os, yaml, json, torch, sys
+import os
+import sys
+import json
+import yaml
+import torch
 import torch.nn as nn
 import torch.optim as optim
 from kafka import KafkaConsumer
+from model import RiskScorerTransformer
+
 sys.path.append(os.path.dirname(__file__))
-from model import RiskScorerLSTM
 
 class Agent:
     def __init__(self, config_path):
@@ -16,14 +21,22 @@ class Agent:
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
         self.input_dim = self.config.get("input_dim", 5)
-        self.hidden_size = self.config.get("hidden_size", 64)
-        self.num_classes = self.config.get("num_classes", 2)  # 예: 하락 위험 0/1
+        self.d_model = self.config.get("hidden_size", 64)
+        self.num_classes = self.config.get("num_classes", 2)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.model = RiskScorerLSTM(self.input_dim, self.hidden_size, self.num_classes).to(self.device)
+        self.model = RiskScorerTransformer(
+            input_dim=self.input_dim,
+            sequence_length=self.sequence_length,
+            d_model=self.d_model,
+            num_classes=self.num_classes
+        ).to(self.device)
+
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
         self.loss_fn = nn.CrossEntropyLoss()
         self.batch_x, self.batch_y = [], []
+
+        print(f"⚠️ [RiskScorer] Initialized - Topic: {self.topic}", flush=True)
 
     def train_step(self):
         self.model.train()
@@ -37,7 +50,7 @@ class Agent:
         self.optimizer.zero_grad()
 
         acc = (logits.argmax(1) == y).float().mean()
-        print(f"⚠️ Risk Loss: {loss.item():.6f} | Acc: {acc.item():.4f}")
+        print(f"📊 [Train] Loss: {loss.item():.6f} | Accuracy: {acc.item():.4f}", flush=True)
 
     def export_onnx(self):
         self.model.eval()
@@ -47,9 +60,9 @@ class Agent:
             self.model, dummy_input, self.model_path,
             input_names=["INPUT"], output_names=["OUTPUT"],
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
-            opset_version=11
+            opset_version=13
         )
-        print(f"✅ ONNX Exported: {self.model_path}")
+        print(f"✅ [Export] ONNX model saved: {self.model_path}", flush=True)
 
     def run(self):
         consumer = KafkaConsumer(
@@ -59,12 +72,14 @@ class Agent:
             auto_offset_reset="latest",
             group_id="risk_scorer_group"
         )
-        print(f"⚠️ RiskScorer consuming from: {self.topic}")
+
+        print(f"📡 [Kafka] Subscribed to: {self.topic}", flush=True)
 
         for msg in consumer:
             value = msg.value
             x = value.get("input")
             y = value.get("target")
+
             if not x or y is None or len(x) != self.sequence_length:
                 continue
 
@@ -76,7 +91,7 @@ class Agent:
                     self.train_step()
                     self.export_onnx()
                 except Exception as e:
-                    print(f"❌ Train error: {e}")
+                    print(f"❌ [Train Error] {e}", flush=True)
                 finally:
                     self.batch_x.clear()
                     self.batch_y.clear()
