@@ -1,15 +1,23 @@
-symbols:
+binance_symbols:
   - BTCUSDT
   - ETHUSDT
   - SOLUSDT
 
+macro_symbols:
+  - "^BTC.D" # BTC Dominance
+  - "^GSPC" # S&P500
+  - "^TNX" # 10Y US Treasury
+  - "GC=F" # Gold Futures
+  - "CL=F" # Crude Oil Futures
+
 intervals:
   - 1m
   - 5m
-  - 15m
   - 1h
   - 1d
 
 limit: 100
 
 target_date: "2024-01-01"
+
+kafka_broker: "kafka:9092"

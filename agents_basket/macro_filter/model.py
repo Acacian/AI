@@ -1,21 +1,22 @@
+import torch
 import torch.nn as nn
 
-class AEModel(nn.Module):
-    def __init__(self, input_size=3, seq_len=100, hidden_size=64):
+class TransformerAE(nn.Module):
+    def __init__(self, input_dim=3, sequence_length=100, d_model=64, nhead=4, num_layers=2):
         super().__init__()
-        self.encoder = nn.Sequential(
-            nn.Flatten(),
-            nn.Linear(input_size * seq_len, hidden_size),
-            nn.ReLU(),
-            nn.Linear(hidden_size, hidden_size // 2),
-        )
+        self.input_proj = nn.Linear(input_dim, d_model)
+        self.pos_embedding = nn.Parameter(torch.randn(1, sequence_length, d_model))
+
+        encoder_layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, batch_first=True)
+        self.encoder = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+
         self.decoder = nn.Sequential(
-            nn.Linear(hidden_size // 2, hidden_size),
+            nn.Linear(d_model, d_model),
             nn.ReLU(),
-            nn.Linear(hidden_size, input_size * seq_len),
-            nn.Unflatten(1, (seq_len, input_size)),
+            nn.Linear(d_model, input_dim)
         )
 
     def forward(self, x):
-        z = self.encoder(x)
-        return self.decoder(z)
+        x_proj = self.input_proj(x) + self.pos_embedding
+        encoded = self.encoder(x_proj)
+        return self.decoder(encoded)
