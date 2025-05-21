@@ -1,15 +1,17 @@
-import os
 import json
 import yaml
 from kafka import KafkaConsumer
-from gateway.triton.triton_client import TritonClient
-from gateway.kafka.kafka_producer import send_message
+from triton.triton_client import TritonClient
+from triton.kafka_utils import send_message
 
-KAFKA_BROKER = os.getenv("KAFKA_BROKER", "kafka:9092")
-CONFIG_PATH = os.getenv("GATEWAY_CONFIG", "gateway/kafka/config.yml")
+KAFKA_BROKER = "kafka:9092"
+CONFIG_PATH = "triton/config.yml"
+GROUP_ID = "ai_triton_router_group"
+
+# Triton client 인스턴스
 triton = TritonClient()
 
-# 구성 로딩
+# Kafka 토픽-모델 매핑 및 라우팅 로드
 with open(CONFIG_PATH, 'r') as f:
     config = yaml.safe_load(f)
 
@@ -23,11 +25,10 @@ def get_kafka_consumer(topics):
         value_deserializer=lambda v: json.loads(v.decode("utf-8")),
         auto_offset_reset="latest",
         enable_auto_commit=True,
-        group_id="ai_gateway_consumer_group"
+        group_id=GROUP_ID,
     )
 
 def is_valid_data(data: dict) -> bool:
-    # 추론을 위한 최소 구조 검증
     return "input" in data and isinstance(data["input"], list)
 
 def consume_loop():

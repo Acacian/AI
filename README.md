@@ -25,8 +25,7 @@ LLM은 이를 토대로 의사결정을 진행하며 MPC Agents에서 비율, �
 4. Agents_MPC : 포지션 비율, 진입 시점, 슬리피지 등을 고려해 최적의 실행 시점과 수량을 산출하는 Agents입니다.
 5. Multi_Agent_Runner : Agents_Basket 내의 각 Agents들을 독립적인 프로세스로 실행하는
    멀티 프로세싱 런처 역할을 합니다.
-6. Gateway : 내부적으로 Agents끼리 통신하기 위한 Kafka, 추론을 위한 Triton 서버에 보내는
-   설정 등을 설정하는 모듈입니다.
+6. Triton-builder : Triton 서버에 어떻게 보내고, 추론 결과를 어떻게 처리할지 설정하는 모듈입니다.
 7. Backtester : 백테스팅을 위한 모듈입니다.
 
 ## Learning & Detecting Data

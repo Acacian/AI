@@ -9,15 +9,18 @@ services:
     depends_on:
       kafka:
         condition: service_healthy
+    volumes:
+      - ./data:/app/data
+      - ./duckdb:/app/duckdb
     networks:
       - ainet
     restart: always
 
-  gateway:
+  triton-builder:
     build:
       context: .
-      dockerfile: Dockerfile.gateway
-    container_name: gateway
+      dockerfile: Dockerfile.triton
+    container_name: triton-builder
     depends_on:
       - kafka
     networks:

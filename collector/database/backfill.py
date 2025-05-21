@@ -4,6 +4,7 @@ import polars as pl
 from collector.data_collect.binance_rest import fetch_binance_symbol
 from collector.data_collect.yahoo_rest import fetch_macro_symbol
 from collector.data_processing.pre_processing import preprocess_ohlcv
+from collector.publisher import publish
 
 CONFIG_PATH = "collector/config.yml"
 META_PATH = "data/last_ts.json"
@@ -18,6 +19,18 @@ SYMBOLS = BINANCE_SYMBOLS + MACRO_SYMBOLS
 INTERVALS = config["intervals"]
 LIMIT = config.get("limit", 100)
 RETENTION_DAYS = config.get("retention_days", 90)
+
+TOPICS = {
+    "liquidity_checker": "liquidity_training_{symbol}_{interval}",
+    "trend_segmenter": "trend_training_{symbol}_{interval}",
+    "noise_filter": "noise_training_{symbol}_{interval}",
+    "risk_scorer": "risk_training_{symbol}_{interval}",
+    "pattern": "pattern_training_{symbol}_{interval}",
+    "volume_ae": "volume_training_{symbol}_{interval}",
+    "macro_filter": "macro_training_{symbol}_{interval}",
+    "overheat_detector": "overheat_training_{symbol}_{interval}",
+    "volatility_watcher": "volatility_training_{symbol}_{interval}",
+}
 
 def get_paths(symbol: str, interval: str):
     data_dir = f"data/{interval}"
@@ -99,6 +112,10 @@ def backfill(symbol: str, interval: str):
                         }
                         for k, row in zip(klines, processed)
                     ]
+
+                    for agent, topic_tpl in TOPICS.items():
+                        topic = topic_tpl.format(symbol=symbol.lower(), interval=interval)
+                        publish(topic, {"input": processed})
 
                     save_parquet(file_path, processed_rows)
                     save_last_timestamp(meta_path, key, klines[-1]["timestamp"])

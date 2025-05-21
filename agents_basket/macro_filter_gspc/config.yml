@@ -1,4 +1,4 @@
-topic: macro_training__gspc_1d
+topic: macro_training___gspc_1d
 model_path: /models/macro_filter_gspc/1/model.onnx
 learning_rate: 0.001
 input_dim: 5

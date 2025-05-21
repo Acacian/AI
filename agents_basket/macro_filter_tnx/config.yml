@@ -1,4 +1,4 @@
-topic: macro_training_^tnx_1d
+topic: macro_training___tnx_1d
 model_path: /models/macro_filter_tnx/1/model.onnx
 learning_rate: 0.001
 input_dim: 5

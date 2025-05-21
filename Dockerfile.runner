@@ -1,6 +1,7 @@
 FROM python:3.10-slim
 
 WORKDIR /app
+ENV PYTHONPATH=/app
 
 # 필수 파일 복사
 COPY multi_agent_runner/ ./multi_agent_runner/

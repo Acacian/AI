@@ -5,6 +5,8 @@ from collector.data_collect.yahoo_rest import fetch_macro_symbol
 from collector.scheduler import Scheduler
 from collector.publisher import publish
 from collector.data_processing.pre_processing import preprocess_ohlcv
+from collector.database.backfill import backfill, SYMBOLS, INTERVALS, MACRO_SYMBOLS
+from collector.database.duckdb import merge_parquet_dir
 
 with open("collector/config.yml") as f:
     config = yaml.safe_load(f)
@@ -34,6 +36,21 @@ has_printed_topics = False
 def kafka_safe_symbol(symbol: str) -> str:
     return re.sub(r"[^a-zA-Z0-9._-]", "_", symbol.lower())
 
+
+## Backfill / DuckDb Usage Stage
+print("📦 Backfill 시작...")
+for symbol in SYMBOLS:
+    for interval in INTERVALS:
+        if symbol in MACRO_SYMBOLS and interval != "1d":
+            continue
+        backfill(symbol, interval)
+
+print("📁 DuckDB 병합 시작...")
+for interval in INTERVALS:
+    merge_parquet_dir(interval)
+
+
+## Collecting Stage
 while True:
     start = time.time()
 

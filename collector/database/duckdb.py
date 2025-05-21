@@ -23,7 +23,7 @@ def merge_parquet_dir(interval: str):
         files_sorted = sorted(files)  # 날짜순 정렬
         file_list = ", ".join(f"'{str(f)}'" for f in files_sorted)
 
-        table_name = symbol.lower() + f"_{interval}"
+        table_name = f'"{symbol.lower()}_{interval}"'
         print(f"📥 병합 중: {symbol} ({len(files)}개 파일) → {table_name}")
 
         query = f"""

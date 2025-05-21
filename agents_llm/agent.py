@@ -2,7 +2,7 @@ import json
 import yaml
 import requests
 from kafka import KafkaConsumer, KafkaProducer
-from gateway.triton.triton_client import TritonClient
+from triton.triton_client import TritonClient
 
 # 설정 로딩
 with open("agents_llm/config.yaml", "r") as f:

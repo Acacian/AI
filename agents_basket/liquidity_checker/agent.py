@@ -1,4 +1,4 @@
-import os
+import os, sys
 import json
 import yaml
 import torch
@@ -20,7 +20,7 @@ class Agent:
 
         self.topic = self.config['topic']
         self.model_path = self.config['model_path']
-        self.batch_size = 3 if mode == "test" else self.config.get('batch_size', 32)
+        self.batch_size = 1 if mode == "test" else self.config.get('batch_size', 32)
         self.learning_rate = self.config.get('learning_rate', 1e-3)
         self.sequence_length = self.config.get('sequence_length', 100)
         self.input_dim = self.config.get('input_dim', 5)
@@ -96,3 +96,12 @@ class Agent:
                     print(f"❌ Train error: {e}")
                 finally:
                     self.batch.clear()
+
+if __name__ == "__main__":
+    if len(sys.argv) != 2:
+        print("❌ 사용법: python -m agents_basket.<agent_name>.agent <config_path>")
+        sys.exit(1)
+
+    config_path = sys.argv[1]
+    agent = Agent(config_path)
+    agent.run()

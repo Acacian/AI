@@ -1,25 +1,27 @@
-import os
-import importlib.util
-import yaml
+import os, subprocess, sys
 
 def load_and_run_agent(config_path: str):
     try:
         print(f"🧪 [Manager] 에이전트 로드 시작: {config_path}", flush=True)
 
-        # agent.py 경로 지정
         agent_dir = os.path.dirname(config_path)
         agent_module_path = os.path.join(agent_dir, "agent.py")
 
-        # 동적 로드
-        spec = importlib.util.spec_from_file_location("agent_module", agent_module_path)
-        agent_module = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(agent_module)
+        # 모듈 경로 → "agents_basket.pattern_ae.agent" 형식으로 변환
+        base_dir = "agents_basket"
+        relative_module = agent_dir.replace("/", ".").replace("\\", ".")
+        if relative_module.startswith(base_dir + "."):
+            module_path = f"{relative_module}.agent"
+        else:
+            raise ValueError(f"잘못된 에이전트 경로: {agent_dir}")
 
-        # Agent 클래스 로딩 및 실행
-        AgentClass = getattr(agent_module, "Agent")
-        agent = AgentClass(config_path)
-        agent.run()
+        subprocess.run(
+            [sys.executable, "-m", module_path, config_path],
+            check=True
+        )
 
+    except subprocess.CalledProcessError as e:
+        print(f"❌ [Manager] 에이전트 실행 실패: {config_path} | 오류: {e}", flush=True)
     except Exception as e:
         print(f"❌ [Manager] 에이전트 실행 실패: {config_path} | 오류: {e}", flush=True)
 
