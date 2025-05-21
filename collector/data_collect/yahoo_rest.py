@@ -1,12 +1,12 @@
 import datetime
 import yfinance as yf
 
-def fetch_macro_symbol(symbol: str, limit: int = 100, date_str: str = None):
-    if not date_str:
-        print(f"❌ macro fetch는 target_date가 필요함")
-        return None
-
-    end_dt = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+def fetch_macro_symbol(symbol: str, limit: int = 100):
+    """
+    최신 macro 데이터를 실시간으로 수집하기 위한 함수.
+    오늘 날짜 기준으로 과거 limit 일 수만큼 데이터를 조회함.
+    """
+    end_dt = datetime.datetime.utcnow()
     start_dt = end_dt - datetime.timedelta(days=limit)
 
     try:

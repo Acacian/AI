@@ -17,8 +17,8 @@ MACRO_SYMBOLS = config.get("macro_symbols", [])
 SYMBOLS = BINANCE_SYMBOLS + MACRO_SYMBOLS
 
 INTERVALS = config["intervals"]
-LIMIT = config.get("limit", 100)
-RETENTION_DAYS = config.get("retention_days", 90)
+LIMIT = int(os.getenv("Backfill_Binance_Limit",1000))
+RETENTION_DAYS = int(os.getenv("Backfill_Days", 90))
 
 TOPICS = {
     "liquidity_checker": "liquidity_training_{symbol}_{interval}",
@@ -76,6 +76,49 @@ def delete_old_files(data_dir: str, symbol: str):
             except Exception:
                 continue
 
+def fetch_full_day_klines(symbol, interval, limit, date_str):
+    start_dt = datetime.datetime.strptime(date_str, "%Y-%m-%d")
+    end_dt = start_dt + datetime.timedelta(days=1)
+
+    from_ts = int(start_dt.timestamp() * 1000)
+    to_ts = int(end_dt.timestamp() * 1000)
+
+    # 인터벌별 1일당 데이터 수 기준 설정 (기준: 반복 호출 필요 여부 판단)
+    INTERVAL_DAILY_COUNT = {
+        "1m": 1440,
+        "3m": 480,
+        "5m": 288,
+        "15m": 96,
+        "30m": 48,
+        "1h": 24,
+        "2h": 12,
+        "4h": 6,
+        "6h": 4,
+        "8h": 3,
+        "12h": 2,
+        "1d": 1
+    }
+
+    # 반복 호출이 불필요한 경우 (1일 데이터가 limit 이하인 경우)
+    if INTERVAL_DAILY_COUNT.get(interval, 9999) <= limit:
+        return fetch_binance_symbol(symbol, interval, limit, date_str)
+
+    # 반복 호출이 필요한 경우 (기존 로직 유지)
+    all_data = []
+    while from_ts < to_ts:
+        chunk = fetch_binance_symbol(symbol, interval, limit, date_str, startTime=from_ts)
+        if not chunk:
+            break
+
+        all_data.extend(chunk)
+        last_ts = chunk[-1]["timestamp"]
+        from_ts = last_ts + 60_000  # 다음 분부터 시작
+
+        if len(chunk) < limit:
+            break
+
+    return all_data
+
 def backfill(symbol: str, interval: str):
     data_dir, meta_path = get_paths(symbol, interval)
     os.makedirs(data_dir, exist_ok=True)
@@ -95,13 +138,12 @@ def backfill(symbol: str, interval: str):
                 if symbol in MACRO_SYMBOLS:
                     klines = fetch_macro_symbol(symbol, LIMIT, date_str)
                 else:
-                    klines = fetch_binance_symbol(symbol, interval, LIMIT, date_str)
+                    klines = fetch_full_day_klines(symbol, interval, LIMIT, date_str)
 
                 if klines:
                     raw = [[k["open"], k["high"], k["low"], k["close"], k["volume"]] for k in klines]
                     processed = preprocess_ohlcv(raw)
 
-                    # 전처리 결과를 klines에 반영하여 저장
                     processed_rows = [
                         {
                             "timestamp": k["timestamp"],
@@ -117,8 +159,7 @@ def backfill(symbol: str, interval: str):
                     ]
 
                     for agent, topic_tpl in TOPICS.items():
-                        safe_symbol = kafka_safe_symbol(symbol)
-                        topic = topic_tpl.format(symbol=safe_symbol, interval=interval)
+                        topic = topic_tpl.format(symbol=kafka_safe_symbol(symbol), interval=interval)
                         publish(topic, {"input": processed})
 
                     save_parquet(file_path, processed_rows)

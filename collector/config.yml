@@ -15,8 +15,4 @@ intervals:
   - 1h
   - 1d
 
-limit: 100
-
-target_date: "2024-01-01"
-
 kafka_broker: "kafka:9092"

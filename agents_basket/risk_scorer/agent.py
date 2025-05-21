@@ -1,9 +1,8 @@
-import os, sys
-import json
-import yaml
+import os, sys, json, yaml, glob
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import polars as pl
 from kafka import KafkaConsumer
 from .model import RiskScorerTransformer
 from dotenv import load_dotenv
@@ -13,7 +12,7 @@ load_dotenv()
 onnx_version = int(os.getenv("Onnx_Version", 17))
 mode = os.getenv("MODE", "prod").lower()
 
-class Agent:
+class RiskScorerAgent:
     def __init__(self, config_path):
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
@@ -26,8 +25,8 @@ class Agent:
         self.input_dim = self.config.get("input_dim", 5)
         self.d_model = self.config.get("hidden_size", 64)
         self.num_classes = self.config.get("num_classes", 2)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.model = RiskScorerTransformer(
             input_dim=self.input_dim,
             sequence_length=self.sequence_length,
@@ -67,7 +66,49 @@ class Agent:
         )
         print(f"✅ [Export] ONNX model saved: {self.model_path}", flush=True)
 
+    def should_pretrain(self):
+        return not os.path.exists(self.model_path)
+
+    def run_offline(self, data_dir="data"):
+        print("📂 [RiskScorer] 오프라인 학습 시작", flush=True)
+        files = sorted(glob.glob(os.path.join(data_dir, "*/*.parquet")))
+
+        for file_path in files:
+            try:
+                df = pl.read_parquet(file_path)
+                if df.shape[0] < self.sequence_length + 1 or "target" not in df.columns:
+                    continue
+
+                data = df.select(["open", "high", "low", "close", "volume"]).to_numpy()
+                targets = df["target"].to_numpy()
+
+                for i in range(len(data) - self.sequence_length):
+                    x = data[i:i+self.sequence_length].tolist()
+                    y = int(targets[i + self.sequence_length - 1])
+                    self.batch_x.append(x)
+                    self.batch_y.append(y)
+
+                    if len(self.batch_x) >= self.batch_size:
+                        self.train_step()
+                        self.batch_x.clear()
+                        self.batch_y.clear()
+
+            except Exception as e:
+                print(f"⚠️ [오프라인] {file_path} 처리 실패: {e}", flush=True)
+
+        if self.batch_x:
+            self.train_step()
+            self.batch_x.clear()
+            self.batch_y.clear()
+
+        self.export_onnx()
+        print("✅ [RiskScorer] 오프라인 학습 완료", flush=True)
+
     def run(self):
+        if self.should_pretrain():
+            print("🧠 [Pretrain] 모델 없음 → 오프라인 학습 수행", flush=True)
+            self.run_offline()
+
         consumer = KafkaConsumer(
             self.topic,
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
@@ -75,7 +116,6 @@ class Agent:
             auto_offset_reset="latest",
             group_id="risk_scorer_group"
         )
-
         print(f"📡 [Kafka] Subscribed to: {self.topic}", flush=True)
 
         for msg in consumer:
@@ -100,10 +140,18 @@ class Agent:
                     self.batch_y.clear()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("❌ 사용법: python -m agents_basket.<agent_name>.agent <config_path>")
+    if len(sys.argv) < 2:
+        print("❌ 사용법: python -m agents_basket.risk_scorer.agent <config_path> [offline]")
         sys.exit(1)
 
     config_path = sys.argv[1]
-    agent = Agent(config_path)
+    is_offline = len(sys.argv) >= 3 and sys.argv[2].lower() == "offline"
+
+    agent = RiskScorerAgent(config_path)
+
+    if is_offline:
+        agent.run_offline()
+        print("🏁 오프라인 학습 완료 후 종료", flush=True)
+        sys.exit(0)
+
     agent.run()

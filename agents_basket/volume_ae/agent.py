@@ -1,9 +1,10 @@
-import os, yaml, json, torch, sys
+import os, sys, json, yaml, glob, torch
 import torch.nn as nn
 import torch.optim as optim
+import polars as pl
 from kafka import KafkaConsumer
-from .model import TransformerAE
 from dotenv import load_dotenv
+from .model import TransformerAE
 
 load_dotenv()
 
@@ -17,7 +18,7 @@ class Agent:
 
         self.topic = self.config["topic"]
         self.model_path = self.config["model_path"]
-        self.batch_size = 1 if mode == "test" else self.config.get('batch_size', 32)
+        self.batch_size = 1 if mode == "test" else self.config.get("batch_size", 32)
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
         self.input_dim = self.config.get("input_dim", 5)
@@ -69,7 +70,40 @@ class Agent:
         )
         print(f"✅ ONNX Exported: {self.model_path}", flush=True)
 
+    def should_pretrain(self):
+        return not os.path.exists(self.model_path)
+
+    def run_offline(self, data_dir="data"):
+        print("📂 [Offline] VolumeAE 선학습 시작", flush=True)
+        files = sorted(glob.glob(os.path.join(data_dir, "*/*.parquet")))
+
+        for file_path in files:
+            try:
+                df = pl.read_parquet(file_path)
+                if df.shape[0] < self.sequence_length:
+                    continue
+                data = df.select(["open", "high", "low", "close", "volume"]).to_numpy()
+                for i in range(len(data) - self.sequence_length + 1):
+                    seq = data[i:i+self.sequence_length].tolist()
+                    self.batch.append(seq)
+                    if len(self.batch) >= self.batch_size:
+                        self.train_step()
+                        self.batch.clear()
+            except Exception as e:
+                print(f"⚠️ [Offline] {file_path} 처리 실패: {e}", flush=True)
+
+        if self.batch:
+            self.train_step()
+            self.batch.clear()
+
+        self.export_onnx()
+        print("✅ [Offline] 학습 완료", flush=True)
+
     def run(self):
+        if self.should_pretrain():
+            print("🧠 모델 없음 → 오프라인 학습 수행", flush=True)
+            self.run_offline()
+
         consumer = KafkaConsumer(
             self.topic,
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
@@ -98,10 +132,18 @@ class Agent:
                     self.batch.clear()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("❌ 사용법: python -m agents_basket.<agent_name>.agent <config_path>")
+    if len(sys.argv) < 2:
+        print("❌ 사용법: python -m agents_basket.volume_ae.agent <config_path> [offline]", flush=True)
         sys.exit(1)
 
     config_path = sys.argv[1]
+    is_offline = len(sys.argv) >= 3 and sys.argv[2].lower() == "offline"
+
     agent = Agent(config_path)
+
+    if is_offline:
+        agent.run_offline()
+        print("🛑 오프라인 학습만 수행 후 종료", flush=True)
+        sys.exit(0)
+
     agent.run()

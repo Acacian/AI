@@ -1,4 +1,4 @@
-import time, yaml, re
+import time, yaml, re, os
 from datetime import datetime
 from collector.data_collect.binance_rest import fetch_binance_symbol
 from collector.data_collect.yahoo_rest import fetch_macro_symbol
@@ -14,9 +14,8 @@ with open("collector/config.yml") as f:
 binance_symbols = config.get("binance_symbols", [])
 macro_symbols = config.get("macro_symbols", [])
 intervals = config["intervals"]
-limit = config.get("limit", 100)
-target_date_str = config.get("target_date")
-target_date = datetime.strptime(target_date_str, "%Y-%m-%d") if target_date_str else None
+binance_limit = int(os.getenv("Backfill_Binance_Limit",1000))
+yfinance_limit = int(os.getenv("Backfill_Yfinance_Limit",1000))
 
 scheduler = Scheduler()
 topics = {
@@ -58,8 +57,7 @@ while True:
     for symbol in binance_symbols:
         for interval in intervals:
             print(f"📡 [BINANCE] Try fetch: {symbol}-{interval}")
-            date_str = target_date.strftime("%Y-%m-%d") if target_date else None
-            klines = fetch_binance_symbol(symbol, interval, limit, date_str)
+            klines = fetch_binance_symbol(symbol, interval, binance_limit)
 
             if not klines or len(klines) < 3:
                 print(f"⚠️ No data or too short: {symbol}-{interval}")
@@ -89,8 +87,7 @@ while True:
     for symbol in macro_symbols:
         interval = "1d"
         print(f"📡 [MACRO] Try fetch: {symbol}-{interval}")
-        date_str = target_date.strftime("%Y-%m-%d") if target_date else None
-        klines = fetch_macro_symbol(symbol, limit, date_str)
+        klines = fetch_macro_symbol(symbol, yfinance_limit)
 
         if not klines or len(klines) < 3:
             print(f"⚠️ No data or too short: {symbol}-{interval}")
@@ -109,10 +106,6 @@ while True:
             publish(topic, {"input": features})
 
         print(f"🟢 [MACRO] {symbol}-{interval} | Published to {len(topics)} agents")
-
-    if target_date:
-        print("✅ 날짜 기반 테스트 완료. 루프 종료.")
-        break
 
     elapsed = time.time() - start
     time.sleep(max(0, 60 - elapsed))
