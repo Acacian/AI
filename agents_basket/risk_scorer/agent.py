@@ -1,20 +1,17 @@
 import os
-import sys
 import json
 import yaml
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from kafka import KafkaConsumer
-import importlib.util
+from .model import RiskScorerTransformer
+from dotenv import load_dotenv
 
-current_dir = os.path.dirname(__file__)
-model_path = os.path.join(current_dir, "model.py")
-spec = importlib.util.spec_from_file_location("model_module", model_path)
-model_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(model_module)
+load_dotenv()
 
-RiskScorerTransformer = model_module.RiskScorerTransformer
+onnx_version = int(os.getenv("Onnx_Version", 17))
+mode = os.getenv("MODE", "prod").lower()
 
 class Agent:
     def __init__(self, config_path):
@@ -23,7 +20,7 @@ class Agent:
 
         self.topic = self.config["topic"]
         self.model_path = self.config["model_path"]
-        self.batch_size = self.config.get("batch_size", 32)
+        self.batch_size = 3 if mode == "test" else self.config.get('batch_size', 32)
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
         self.input_dim = self.config.get("input_dim", 5)
@@ -66,7 +63,7 @@ class Agent:
             self.model, dummy_input, self.model_path,
             input_names=["INPUT"], output_names=["OUTPUT"],
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
-            opset_version=13
+            opset_version=onnx_version
         )
         print(f"✅ [Export] ONNX model saved: {self.model_path}", flush=True)
 

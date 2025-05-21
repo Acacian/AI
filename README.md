@@ -32,12 +32,14 @@ LLM은 이를 토대로 의사결정을 진행하며 MPC Agents에서 비율, �
 ## Learning & Detecting Data
 
 1. Binance OHLCV
-2. Yahoo Data(금, S&P 500, 채권 등)
+2. Yahoo Data(금, S&P 500, 채권)
 3. Binance Orderbook
 
 ## Data Preprocessing Strategy
 
-1.
+1. Z-score 정규화: 거래량의 경우, OHLC(open, high, low, close)에 비해 값의 스케일이 너무 크기 때문에,
+   그대로 모델에 입력하면 모델이 거래량에 과도하게 민감하게 반응할 수 있어. 이를 방지하기 위해 Z-score
+   정규화를 통해 모든 feature가 평균 0, 표준편차 1의 동일한 스케일을 가지도록 처리하였습니다.
 
 ## Settings
 
@@ -111,8 +113,11 @@ flowchart TD
 
 ## Env
 
+Mode :  
 Binance_Key :  
 Binance_Secret :
+
+(Mode : test/prod 두 가지가 있으며, test로 설정 시 학습 사이즈를 최소한으로 설정함)
 
 ## 실행법
 

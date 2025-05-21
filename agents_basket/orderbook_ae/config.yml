@@ -1,6 +1,5 @@
 topic: orderbook_training_btcusdt
 model_path: /models/orderbook_agent/1/model.onnx
-batch_size: 32
 learning_rate: 0.001
 input_dim: 40
 sequence_length: 100

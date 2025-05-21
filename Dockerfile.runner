@@ -8,6 +8,7 @@ COPY agents_basket/ ./agents_basket/
 
 # 필요 시 requirements.txt 존재 시 설치
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --upgrade pip \
+    && pip install --no-cache-dir -r requirements.txt
 
 CMD ["python", "multi_agent_runner/main.py"]
