@@ -1,7 +1,7 @@
 import uvicorn
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
-from triton.triton_router import consume_loop
+from triton_router import consume_loop
 import threading
 
 @asynccontextmanager

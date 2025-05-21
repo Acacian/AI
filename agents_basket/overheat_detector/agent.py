@@ -1,9 +1,11 @@
-import os, json, yaml, torch, sys
+import os, sys, json, yaml, glob
+import torch
 import torch.nn as nn
 import torch.optim as optim
+import polars as pl
 from kafka import KafkaConsumer
-from .model import TransformerAE
 from dotenv import load_dotenv
+from .model import TransformerAE
 
 load_dotenv()
 
@@ -40,7 +42,7 @@ class OverheatDetectorAgent:
 
     def train_step(self):
         self.model.train()
-        x = torch.tensor(self.batch, dtype=torch.float32).to(self.device)  # [B, T, D]
+        x = torch.tensor(self.batch, dtype=torch.float32).to(self.device)
         recon = self.model(x)
         loss = self.loss_fn(recon, x).mean()
         loss.backward()
@@ -53,7 +55,7 @@ class OverheatDetectorAgent:
         with torch.no_grad():
             x = torch.tensor(x_batch, dtype=torch.float32).to(self.device)
             recon = self.model(x)
-            error = (x - recon).pow(2).mean(dim=(1, 2))  # [B]
+            error = (x - recon).pow(2).mean(dim=(1, 2))
             flags = (error > self.threshold).float()
         return error.tolist(), flags.tolist()
 
@@ -72,14 +74,47 @@ class OverheatDetectorAgent:
         )
         print(f"✅ [Export] ONNX model saved: {self.model_path}", flush=True)
 
+    def run_offline(self, data_dir="data"):
+        print("📂 오프라인 학습 시작", flush=True)
+        pattern = os.path.join(data_dir, "*/*.parquet")
+        files = sorted(glob.glob(pattern))
+
+        for file_path in files:
+            try:
+                df = pl.read_parquet(file_path)
+                if df.shape[0] < self.sequence_length:
+                    continue
+                data = df.select(["open", "high", "low", "close", "volume"]).to_numpy()
+                for i in range(len(data) - self.sequence_length + 1):
+                    seq = data[i:i + self.sequence_length].tolist()
+                    self.batch.append(seq)
+                    if len(self.batch) >= self.batch_size:
+                        self.train_step()
+                        self.batch.clear()
+            except Exception as e:
+                print(f"⚠️ {file_path} 처리 실패: {e}", flush=True)
+
+        if self.batch:
+            self.train_step()
+            self.batch.clear()
+
+        self.export_onnx()
+        print("✅ 오프라인 학습 완료", flush=True)
+
+    def should_pretrain(self):
+        return not os.path.exists(self.model_path)
+
     def run(self):
-        group_id = f"overheat_detector_group_{os.getpid()}"
+        if self.should_pretrain():
+            print("🧠 모델이 없어서 오프라인 학습을 먼저 실행합니다.", flush=True)
+            self.run_offline()
+
         consumer = KafkaConsumer(
             self.topic,
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
             value_deserializer=lambda v: json.loads(v.decode("utf-8")),
             auto_offset_reset="latest",
-            group_id=group_id
+            group_id=f"overheat_detector_group_{os.getpid()}"
         )
 
         print(f"📡 [Kafka] Subscribed to: {self.topic}", flush=True)
@@ -103,10 +138,18 @@ class OverheatDetectorAgent:
                     self.batch.clear()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("❌ 사용법: python -m agents_basket.<agent_name>.agent <config_path>")
+    if len(sys.argv) < 2:
+        print("❌ 사용법: python -m agents_basket.overheat_detector.agent <config_path> [offline]")
         sys.exit(1)
 
     config_path = sys.argv[1]
+    is_offline = len(sys.argv) >= 3 and sys.argv[2].lower() == "offline"
+
     agent = OverheatDetectorAgent(config_path)
+
+    if is_offline:
+        agent.run_offline()
+        print("🚀 오프라인 학습만 수행하고 종료합니다.", flush=True)
+        sys.exit(0)
+
     agent.run()

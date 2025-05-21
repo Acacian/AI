@@ -1,16 +1,17 @@
-import os, json, yaml, torch, sys
+import os, sys, json, yaml, glob, torch
 import torch.nn as nn
 import torch.optim as optim
+import polars as pl
 from kafka import KafkaConsumer
-from .model import TransformerAE
 from dotenv import load_dotenv
+from .model import TransformerAE
 
 load_dotenv()
 
 onnx_version = int(os.getenv("Onnx_Version", 17))
 mode = os.getenv("MODE", "prod").lower()
 
-class Agent:
+class PatternAEAgent:
     def __init__(self, config_path):
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
@@ -25,13 +26,7 @@ class Agent:
         self.threshold = self.config.get("recon_error_threshold", 0.05)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-        self.model = TransformerAE(
-            input_dim=self.input_dim,
-            sequence_length=self.sequence_length,
-            d_model=self.d_model
-        ).to(self.device)
-
+        self.model = TransformerAE(self.input_dim, self.sequence_length, self.d_model).to(self.device)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
         self.loss_fn = nn.MSELoss(reduction="none")
         self.batch = []
@@ -60,7 +55,38 @@ class Agent:
         )
         print(f"✅ ONNX Exported: {self.model_path}", flush=True)
 
+    def run_offline(self, data_dir="data"):
+        print("📂 PatternAE 오프라인 학습 시작", flush=True)
+        files = sorted(glob.glob(os.path.join(data_dir, "*/*.parquet")))
+        for file_path in files:
+            try:
+                df = pl.read_parquet(file_path)
+                if df.shape[0] < self.sequence_length:
+                    continue
+                data = df.select(["open", "high", "low", "close", "volume"]).to_numpy()
+                for i in range(len(data) - self.sequence_length + 1):
+                    self.batch.append(data[i:i+self.sequence_length].tolist())
+                    if len(self.batch) >= self.batch_size:
+                        self.train_step()
+                        self.batch.clear()
+            except Exception as e:
+                print(f"⚠️ 파일 처리 실패: {file_path} | {e}", flush=True)
+
+        if self.batch:
+            self.train_step()
+            self.batch.clear()
+
+        self.export_onnx()
+        print("✅ PatternAE 오프라인 학습 완료", flush=True)
+
+    def should_pretrain(self):
+        return not os.path.exists(self.model_path)
+
     def run(self):
+        if self.should_pretrain():
+            print("🔄 ONNX 모델 없음 → 오프라인 학습 수행", flush=True)
+            self.run_offline()
+
         consumer = KafkaConsumer(
             self.topic,
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
@@ -74,8 +100,8 @@ class Agent:
             features = msg.value.get("input")
             if not features or len(features) != self.sequence_length:
                 continue
-
             self.batch.append(features)
+
             if len(self.batch) >= self.batch_size:
                 try:
                     self.train_step()
@@ -86,10 +112,18 @@ class Agent:
                     self.batch.clear()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("❌ 사용법: python -m agents_basket.<agent_name>.agent <config_path>")
+    if len(sys.argv) < 2:
+        print("❌ 사용법: python -m agents_basket.pattern_ae.agent <config_path> [offline]")
         sys.exit(1)
 
     config_path = sys.argv[1]
-    agent = Agent(config_path)
+    is_offline = len(sys.argv) >= 3 and sys.argv[2].lower() == "offline"
+
+    agent = PatternAEAgent(config_path)
+
+    if is_offline:
+        agent.run_offline()
+        print("🚀 오프라인 학습만 완료 후 종료", flush=True)
+        sys.exit(0)
+
     agent.run()

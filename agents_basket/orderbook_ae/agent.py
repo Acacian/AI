@@ -1,9 +1,8 @@
-import os, sys
-import json
-import yaml
+import os, sys, glob, json, yaml
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import polars as pl
 from kafka import KafkaConsumer
 from .model import TransformerAE
 from dotenv import load_dotenv
@@ -20,7 +19,7 @@ class OrderbookAgent:
 
         self.topic = self.config["topic"]
         self.model_path = self.config["model_path"]
-        self.batch_size = 1 if mode == "test" else self.config.get('batch_size', 32)
+        self.batch_size = 1 if mode == "test" else self.config.get("batch_size", 32)
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
         self.input_dim = self.config.get("input_dim", 40)  # 20 bids + 20 asks
@@ -81,7 +80,44 @@ class OrderbookAgent:
         )
         print(f"✅ ONNX exported: {self.model_path}")
 
+    def run_offline(self, data_dir="data"):
+        print("📂 오프라인 학습 시작")
+        pattern = os.path.join(data_dir, "*/*.parquet")
+        files = sorted(glob.glob(pattern))
+
+        for file_path in files:
+            try:
+                df = pl.read_parquet(file_path)
+                if df.shape[0] < self.sequence_length:
+                    continue
+
+                data = df.to_numpy()
+                for i in range(len(data) - self.sequence_length + 1):
+                    seq = data[i:i+self.sequence_length].tolist()
+                    self.batch.append(seq)
+
+                    if len(self.batch) >= self.batch_size:
+                        self.train_step()
+                        self.batch.clear()
+
+            except Exception as e:
+                print(f"⚠️ {file_path} 처리 실패: {e}")
+
+        if self.batch:
+            self.train_step()
+            self.batch.clear()
+
+        self.export_onnx()
+        print("✅ 오프라인 학습 완료")
+
+    def should_pretrain(self):
+        return not os.path.exists(self.model_path)
+
     def run(self):
+        if self.should_pretrain():
+            print("🧠 모델 파일이 없어 오프라인 학습을 먼저 수행합니다.")
+            self.run_offline()
+
         consumer = KafkaConsumer(
             self.topic,
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
@@ -118,10 +154,18 @@ class OrderbookAgent:
                     self.batch.clear()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
-        print("❌ 사용법: python -m agents_basket.<agent_name>.agent <config_path>")
+    if len(sys.argv) < 2:
+        print("❌ 사용법: python -m agents_basket.<agent_name>.agent <config_path> [offline]")
         sys.exit(1)
 
     config_path = sys.argv[1]
+    is_offline_mode = len(sys.argv) >= 3 and sys.argv[2].lower() == "offline"
+
     agent = OrderbookAgent(config_path)
-    agent.run()
+
+    if is_offline_mode:
+        agent.run_offline()
+        print("🚀 오프라인 학습만 수행하고 종료합니다.")
+        sys.exit(0)
+    else:
+        agent.run()

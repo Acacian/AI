@@ -1,4 +1,4 @@
-import os, json, datetime, yaml
+import os, json, datetime, yaml, re
 from tqdm import tqdm
 import polars as pl
 from collector.data_collect.binance_rest import fetch_binance_symbol
@@ -31,6 +31,9 @@ TOPICS = {
     "overheat_detector": "overheat_training_{symbol}_{interval}",
     "volatility_watcher": "volatility_training_{symbol}_{interval}",
 }
+
+def kafka_safe_symbol(symbol: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9._-]", "_", symbol.lower())
 
 def get_paths(symbol: str, interval: str):
     data_dir = f"data/{interval}"
@@ -114,7 +117,8 @@ def backfill(symbol: str, interval: str):
                     ]
 
                     for agent, topic_tpl in TOPICS.items():
-                        topic = topic_tpl.format(symbol=symbol.lower(), interval=interval)
+                        safe_symbol = kafka_safe_symbol(symbol)
+                        topic = topic_tpl.format(symbol=safe_symbol, interval=interval)
                         publish(topic, {"input": processed})
 
                     save_parquet(file_path, processed_rows)

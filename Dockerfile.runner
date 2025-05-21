@@ -6,6 +6,8 @@ ENV PYTHONPATH=/app
 # 필수 파일 복사
 COPY multi_agent_runner/ ./multi_agent_runner/
 COPY agents_basket/ ./agents_basket/
+COPY data/ ./data/
+COPY duckdb/ ./duckdb/
 
 # 필요 시 requirements.txt 존재 시 설치
 COPY requirements.txt ./
