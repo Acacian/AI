@@ -1,4 +1,4 @@
-import os, sys, glob, json, yaml
+import os, sys, glob, json, yaml, logging
 from collections import deque
 import torch
 import torch.nn as nn
@@ -13,6 +13,16 @@ load_dotenv()
 onnx_version = int(os.getenv("Onnx_Version", 17))
 mode = os.getenv("MODE", "prod").lower()
 
+# 로깅 설정
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | OrderbookAgent | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("OrderbookAgent")
+
+
 class OrderbookAgent:
     def __init__(self, config_path: str):
         with open(config_path, 'r') as f:
@@ -23,7 +33,7 @@ class OrderbookAgent:
         self.batch_size = 1 if mode == "test" else self.config.get("batch_size", 32)
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
-        self.input_dim = self.config.get("input_dim", 40)  # 20 bids + 20 asks
+        self.input_dim = self.config.get("input_dim", 40)
         self.d_model = self.config.get("d_model", 64)
         self.threshold = self.config.get("recon_error_threshold", 0.05)
 
@@ -39,10 +49,9 @@ class OrderbookAgent:
         self.loss_fn = nn.MSELoss(reduction="none")
         self.batch = []
 
-        print(f"🚀 OrderbookAgent initialized on topic: {self.topic}")
+        logger.info(f"🚀 Initialized with topic: {self.topic}")
 
     def flatten_orderbook(self, bids, asks):
-        """20개씩 잘라서 [p1, q1, p2, q2, ..., a1, q1, a2, q2, ...] 형태"""
         def flatten(side):
             return [v for pair in side[:20] for v in pair]
         return flatten(bids) + flatten(asks)
@@ -55,7 +64,7 @@ class OrderbookAgent:
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
-        print(f"🧠 Orderbook AE Loss: {loss.item():.6f}")
+        logger.info(f"🧠 Orderbook AE Loss: {loss.item():.6f}")
 
     def compute_recon_score(self, x_batch):
         self.model.eval()
@@ -79,10 +88,10 @@ class OrderbookAgent:
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
             opset_version=onnx_version
         )
-        print(f"✅ ONNX exported: {self.model_path}")
+        logger.info(f"✅ ONNX exported: {self.model_path}")
 
     def run_offline(self, data_dir="data"):
-        print("📂 오프라인 학습 시작")
+        logger.info("📂 오프라인 학습 시작")
         pattern = os.path.join(data_dir, "*/*.parquet")
         files = sorted(glob.glob(pattern))
 
@@ -102,21 +111,21 @@ class OrderbookAgent:
                         self.batch.clear()
 
             except Exception as e:
-                print(f"⚠️ {file_path} 처리 실패: {e}")
+                logger.warning(f"⚠️ 파일 처리 실패 {file_path}: {e}")
 
         if self.batch:
             self.train_step()
             self.batch.clear()
 
         self.export_onnx()
-        print("✅ 오프라인 학습 완료")
+        logger.info("✅ 오프라인 학습 완료")
 
     def should_pretrain(self):
         return not os.path.exists(self.model_path)
 
     def run(self):
         if self.should_pretrain():
-            print("🧠 모델 파일이 없어 오프라인 학습을 먼저 수행합니다.")
+            logger.info("🧠 모델이 없어 오프라인 학습 먼저 수행")
             self.run_offline()
 
         self.sequence_buffer = deque(maxlen=self.sequence_length)
@@ -128,7 +137,7 @@ class OrderbookAgent:
             auto_offset_reset="latest",
             group_id="orderbook_agent_group"
         )
-        print(f"📥 Listening to Kafka topic: {self.topic}")
+        logger.info(f"📡 Kafka 수신 시작: {self.topic}")
 
         for msg in consumer:
             data = msg.value
@@ -145,23 +154,24 @@ class OrderbookAgent:
             self.sequence_buffer.append(flattened)
 
             if len(self.sequence_buffer) == self.sequence_length:
-                self.batch.append(list(self.sequence_buffer))  # 시퀀스 단위 추가
+                self.batch.append(list(self.sequence_buffer))
 
             if len(self.batch) >= self.batch_size:
                 try:
                     self.train_step()
                     errors, flags = self.compute_recon_score(self.batch)
                     for err, flag in zip(errors, flags):
-                        print(f"  ⚠️ Recon Error: {err:.4f} | Anomaly: {'❌' if flag else '✅'}")
+                        logger.info(f"  ⚠️ Recon Error: {err:.4f} | Anomaly: {'❌' if flag else '✅'}")
                     self.export_onnx()
                 except Exception as e:
-                    print(f"❌ Training error: {e}")
+                    logger.error(f"❌ 학습 중 오류: {e}")
                 finally:
                     self.batch.clear()
 
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("❌ 사용법: python -m agents_basket.<agent_name>.agent <config_path> [offline]")
+        logger.error("❌ 사용법: python -m agents_basket.<agent_name>.agent <config_path> [offline]")
         sys.exit(1)
 
     config_path = sys.argv[1]
@@ -171,7 +181,7 @@ if __name__ == "__main__":
 
     if is_offline_mode:
         agent.run_offline()
-        print("🚀 오프라인 학습만 수행하고 종료합니다.")
+        logger.info("🚀 오프라인 학습만 수행하고 종료합니다.")
         sys.exit(0)
     else:
         agent.run()

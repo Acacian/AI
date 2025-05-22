@@ -120,7 +120,11 @@ def fetch_full_day_klines(symbol, interval, limit, date_str):
     return all_data
 
 def safe_val(v):
-    return float(v[0]) if isinstance(v, list) else float(v)
+    if isinstance(v, list):
+        return float(v[0])
+    elif hasattr(v, "iloc"):
+        return float(v.iloc[0])
+    return float(v)
 
 def backfill(symbol: str, interval: str):
     data_dir, meta_path = get_paths(symbol, interval)

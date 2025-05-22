@@ -1,4 +1,4 @@
-import os, sys, json, yaml, glob
+import os, sys, json, yaml, glob, logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,6 +11,15 @@ load_dotenv()
 
 onnx_version = int(os.getenv("Onnx_Version", 17))
 mode = os.getenv("MODE", "prod").lower()
+
+# 로깅 설정
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | TrendSegmenter | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("TrendSegmenter")
 
 class Agent:
     def __init__(self, config_path):
@@ -39,7 +48,7 @@ class Agent:
         self.loss_fn = nn.CrossEntropyLoss()
         self.batch_x, self.batch_y = [], []
 
-        print(f"🧠 [TrendSegmenter] Initialized - Topic: {self.topic}", flush=True)
+        logger.info(f"🧠 Initialized - Topic: {self.topic}")
 
     def train_step(self):
         self.model.train()
@@ -53,7 +62,7 @@ class Agent:
         self.optimizer.zero_grad()
 
         acc = (logits.argmax(1) == y).float().mean()
-        print(f"📊 [Train] Loss: {loss.item():.6f} | Accuracy: {acc.item():.4f}", flush=True)
+        logger.info(f"📊 Train - Loss: {loss.item():.6f} | Accuracy: {acc.item():.4f}")
 
     def export_onnx(self):
         self.model.eval()
@@ -68,13 +77,13 @@ class Agent:
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
             opset_version=onnx_version
         )
-        print(f"✅ [Export] ONNX model saved: {self.model_path}", flush=True)
+        logger.info(f"✅ ONNX model saved: {self.model_path}")
 
     def should_pretrain(self):
         return not os.path.exists(self.model_path)
 
     def run_offline(self, data_dir="data"):
-        print("📂 [Offline] TrendSegmenter 오프라인 학습 시작", flush=True)
+        logger.info("📂 오프라인 학습 시작")
         files = sorted(glob.glob(os.path.join(data_dir, "*/*.parquet")))
 
         for file_path in files:
@@ -98,7 +107,7 @@ class Agent:
                         self.batch_y.clear()
 
             except Exception as e:
-                print(f"⚠️ [Offline] {file_path} 처리 실패: {e}", flush=True)
+                logger.warning(f"⚠️ 파일 처리 실패: {file_path} | {e}")
 
         if self.batch_x:
             self.train_step()
@@ -106,11 +115,11 @@ class Agent:
             self.batch_y.clear()
 
         self.export_onnx()
-        print("✅ [Offline] 학습 완료", flush=True)
+        logger.info("✅ 오프라인 학습 완료")
 
     def run(self):
         if self.should_pretrain():
-            print("🧠 [Pretrain] 모델이 없어 오프라인 학습 먼저 수행합니다", flush=True)
+            logger.info("🧠 ONNX 모델 없음 → 오프라인 학습 먼저 수행")
             self.run_offline()
 
         consumer = KafkaConsumer(
@@ -120,7 +129,7 @@ class Agent:
             auto_offset_reset="latest",
             group_id="trend_segmenter_group"
         )
-        print(f"📡 [Kafka] Listening to: {self.topic}", flush=True)
+        logger.info(f"📡 Kafka consuming from: {self.topic}")
 
         for msg in consumer:
             data = msg.value
@@ -138,14 +147,14 @@ class Agent:
                     self.train_step()
                     self.export_onnx()
                 except Exception as e:
-                    print(f"❌ [Train Error] {e}", flush=True)
+                    logger.error(f"❌ Train error: {e}")
                 finally:
                     self.batch_x.clear()
                     self.batch_y.clear()
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("❌ 사용법: python -m agents_basket.trend_segmenter.agent <config_path> [offline]", flush=True)
+        logger.error("❌ 사용법: python -m agents_basket.trend_segmenter.agent <config_path> [offline]")
         sys.exit(1)
 
     config_path = sys.argv[1]
@@ -155,7 +164,7 @@ if __name__ == "__main__":
 
     if is_offline:
         agent.run_offline()
-        print("🏁 오프라인 학습만 수행 후 종료", flush=True)
+        logger.info("🏁 오프라인 학습 완료 후 종료")
         sys.exit(0)
 
     agent.run()

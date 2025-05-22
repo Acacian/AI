@@ -1,16 +1,25 @@
-import os, sys, json, yaml, glob
+import os, sys, json, yaml, glob, logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import polars as pl
 from kafka import KafkaConsumer
-from .model import RiskScorerTransformer
 from dotenv import load_dotenv
+from .model import RiskScorerTransformer
 
 load_dotenv()
 
 onnx_version = int(os.getenv("Onnx_Version", 17))
 mode = os.getenv("MODE", "prod").lower()
+
+# 로깅 설정
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | RiskScorer | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("RiskScorer")
 
 class RiskScorerAgent:
     def __init__(self, config_path):
@@ -19,7 +28,7 @@ class RiskScorerAgent:
 
         self.topic = self.config["topic"]
         self.model_path = self.config["model_path"]
-        self.batch_size = 1 if mode == "test" else self.config.get('batch_size', 32)
+        self.batch_size = 1 if mode == "test" else self.config.get("batch_size", 32)
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
         self.input_dim = self.config.get("input_dim", 5)
@@ -38,7 +47,7 @@ class RiskScorerAgent:
         self.loss_fn = nn.CrossEntropyLoss()
         self.batch_x, self.batch_y = [], []
 
-        print(f"⚠️ [RiskScorer] Initialized - Topic: {self.topic}", flush=True)
+        logger.info(f"⚠️ Initialized - Topic: {self.topic}")
 
     def train_step(self):
         self.model.train()
@@ -52,7 +61,7 @@ class RiskScorerAgent:
         self.optimizer.zero_grad()
 
         acc = (logits.argmax(1) == y).float().mean()
-        print(f"📊 [Train] Loss: {loss.item():.6f} | Accuracy: {acc.item():.4f}", flush=True)
+        logger.info(f"📊 Train - Loss: {loss.item():.6f} | Accuracy: {acc.item():.4f}")
 
     def export_onnx(self):
         self.model.eval()
@@ -64,13 +73,13 @@ class RiskScorerAgent:
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
             opset_version=onnx_version
         )
-        print(f"✅ [Export] ONNX model saved: {self.model_path}", flush=True)
+        logger.info(f"✅ ONNX model exported: {self.model_path}")
 
     def should_pretrain(self):
         return not os.path.exists(self.model_path)
 
     def run_offline(self, data_dir="data"):
-        print("📂 [RiskScorer] 오프라인 학습 시작", flush=True)
+        logger.info("📂 오프라인 학습 시작")
         files = sorted(glob.glob(os.path.join(data_dir, "*/*.parquet")))
 
         for file_path in files:
@@ -94,7 +103,7 @@ class RiskScorerAgent:
                         self.batch_y.clear()
 
             except Exception as e:
-                print(f"⚠️ [오프라인] {file_path} 처리 실패: {e}", flush=True)
+                logger.warning(f"⚠️ 파일 처리 실패: {file_path} | {e}")
 
         if self.batch_x:
             self.train_step()
@@ -102,11 +111,11 @@ class RiskScorerAgent:
             self.batch_y.clear()
 
         self.export_onnx()
-        print("✅ [RiskScorer] 오프라인 학습 완료", flush=True)
+        logger.info("✅ 오프라인 학습 완료")
 
     def run(self):
         if self.should_pretrain():
-            print("🧠 [Pretrain] 모델 없음 → 오프라인 학습 수행", flush=True)
+            logger.info("🧠 ONNX 모델 없음 → 오프라인 학습 먼저 수행")
             self.run_offline()
 
         consumer = KafkaConsumer(
@@ -116,7 +125,7 @@ class RiskScorerAgent:
             auto_offset_reset="latest",
             group_id="risk_scorer_group"
         )
-        print(f"📡 [Kafka] Subscribed to: {self.topic}", flush=True)
+        logger.info(f"📡 Kafka consuming from: {self.topic}")
 
         for msg in consumer:
             value = msg.value
@@ -124,12 +133,11 @@ class RiskScorerAgent:
             y = value.get("target")
 
             if (
-                not x
-                or y is None
+                not x or y is None
                 or len(x) != self.sequence_length
                 or not all(isinstance(row, list) and len(row) == self.input_dim for row in x)
             ):
-                continue  # shape 검증 실패 시 무시
+                continue  # invalid shape
 
             self.batch_x.append(x)
             self.batch_y.append(y)
@@ -139,14 +147,14 @@ class RiskScorerAgent:
                     self.train_step()
                     self.export_onnx()
                 except Exception as e:
-                    print(f"❌ [Train Error] {e}", flush=True)
+                    logger.error(f"❌ Train error: {e}")
                 finally:
                     self.batch_x.clear()
                     self.batch_y.clear()
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("❌ 사용법: python -m agents_basket.risk_scorer.agent <config_path> [offline]")
+        logger.error("❌ 사용법: python -m agents_basket.risk_scorer.agent <config_path> [offline]")
         sys.exit(1)
 
     config_path = sys.argv[1]
@@ -156,7 +164,7 @@ if __name__ == "__main__":
 
     if is_offline:
         agent.run_offline()
-        print("🏁 오프라인 학습 완료 후 종료", flush=True)
+        logger.info("🏁 오프라인 학습 완료 후 종료")
         sys.exit(0)
 
     agent.run()

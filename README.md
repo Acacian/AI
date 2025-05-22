@@ -95,6 +95,10 @@ Binance_Secret :
 
 (Mode : test/prod 두 가지가 있으며, test로 설정 시 학습 사이즈를 최소한으로 설정함)
 
+## 하면서 어려웠던 점(TroubleShooting)
+
+1. CPU Core 사용량이 너무 크게 나와서, 모듈 하나하나 분석해 본 결과 Agents들이 사용하는 Torch가 기본적으로 명시를 안 해주면 CPU 버전을 다운받아 사용한다는 것을 알게 되었고 GPU 기반으로 변환하였음. 특히 단순 시계열 분석이 아닌 Transformer를 사용하여서 더 CPU 사용량이 높았던 것으로 추정했고, GPU 기반으로 바꾸면서 문제 해결
+
 ## 실행법
 
 1. env 파일을 생성한 후, 위에 있는 환경변수들의 Key에 맞는 Value를 입력합니다.

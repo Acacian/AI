@@ -17,7 +17,9 @@ def load_and_run_agent(config_path: str):
 
         subprocess.run(
             [sys.executable, "-m", module_path, config_path],
-            check=True
+            check=True,
+            stdout=sys.stdout,
+            stderr=sys.stderr
         )
 
     except subprocess.CalledProcessError as e:

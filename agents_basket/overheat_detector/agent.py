@@ -1,4 +1,4 @@
-import os, sys, json, yaml, glob
+import os, sys, json, yaml, glob, logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,6 +11,15 @@ load_dotenv()
 
 onnx_version = int(os.getenv("Onnx_Version", 17))
 mode = os.getenv("MODE", "prod").lower()
+
+# 로깅 설정
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | OverheatDetector | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("OverheatDetector")
 
 class OverheatDetectorAgent:
     def __init__(self, config_path: str):
@@ -38,7 +47,7 @@ class OverheatDetectorAgent:
         self.loss_fn = nn.MSELoss(reduction="none")
         self.batch = []
 
-        print(f"🚨 [OverheatDetector] Initialized - Topic: {self.topic}", flush=True)
+        logger.info(f"🚨 Initialized - Topic: {self.topic}")
 
     def train_step(self):
         self.model.train()
@@ -48,7 +57,7 @@ class OverheatDetectorAgent:
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
-        print(f"🧠 [Train] Loss: {loss.item():.6f}", flush=True)
+        logger.info(f"🧠 Train Loss: {loss.item():.6f}")
 
     def compute_recon_score(self, x_batch):
         self.model.eval()
@@ -72,10 +81,10 @@ class OverheatDetectorAgent:
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
             opset_version=onnx_version
         )
-        print(f"✅ [Export] ONNX model saved: {self.model_path}", flush=True)
+        logger.info(f"✅ ONNX Exported: {self.model_path}")
 
     def run_offline(self, data_dir="data"):
-        print("📂 오프라인 학습 시작", flush=True)
+        logger.info("📂 오프라인 학습 시작")
         pattern = os.path.join(data_dir, "*/*.parquet")
         files = sorted(glob.glob(pattern))
 
@@ -84,6 +93,7 @@ class OverheatDetectorAgent:
                 df = pl.read_parquet(file_path)
                 if df.shape[0] < self.sequence_length:
                     continue
+
                 data = df.select(["open", "high", "low", "close", "volume"]).to_numpy()
                 for i in range(len(data) - self.sequence_length + 1):
                     seq = data[i:i + self.sequence_length].tolist()
@@ -91,22 +101,23 @@ class OverheatDetectorAgent:
                     if len(self.batch) >= self.batch_size:
                         self.train_step()
                         self.batch.clear()
+
             except Exception as e:
-                print(f"⚠️ {file_path} 처리 실패: {e}", flush=True)
+                logger.warning(f"⚠️ {file_path} 처리 실패: {e}")
 
         if self.batch:
             self.train_step()
             self.batch.clear()
 
         self.export_onnx()
-        print("✅ 오프라인 학습 완료", flush=True)
+        logger.info("✅ 오프라인 학습 완료")
 
     def should_pretrain(self):
         return not os.path.exists(self.model_path)
 
     def run(self):
         if self.should_pretrain():
-            print("🧠 모델이 없어서 오프라인 학습을 먼저 실행합니다.", flush=True)
+            logger.info("🧠 모델 없음 → 오프라인 학습 먼저 수행")
             self.run_offline()
 
         consumer = KafkaConsumer(
@@ -117,7 +128,7 @@ class OverheatDetectorAgent:
             group_id=f"overheat_detector_group_{os.getpid()}"
         )
 
-        print(f"📡 [Kafka] Subscribed to: {self.topic}", flush=True)
+        logger.info(f"📡 Kafka Subscribed: {self.topic}")
 
         for msg in consumer:
             features = msg.value.get("input")
@@ -125,23 +136,24 @@ class OverheatDetectorAgent:
                 continue
 
             features = features[-self.sequence_length:]
-
             self.batch.append(features)
+
             if len(self.batch) >= self.batch_size:
                 try:
                     self.train_step()
                     recon_errors, flags = self.compute_recon_score(self.batch)
                     for err, flag in zip(recon_errors, flags):
-                        print(f"  📉 Error: {err:.4f} | Macro anomaly: {'❌' if flag else '✅'}")
+                        logger.info(f"  📉 Error: {err:.4f} | Anomaly: {'❌' if flag else '✅'}")
                     self.export_onnx()
                 except Exception as e:
-                    print(f"❌ Train error: {e}")
+                    logger.error(f"❌ Train error: {e}")
                 finally:
                     self.batch.clear()
 
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("❌ 사용법: python -m agents_basket.overheat_detector.agent <config_path> [offline]")
+        logger.error("❌ 사용법: python -m agents_basket.overheat_detector.agent <config_path> [offline]")
         sys.exit(1)
 
     config_path = sys.argv[1]
@@ -151,7 +163,7 @@ if __name__ == "__main__":
 
     if is_offline:
         agent.run_offline()
-        print("🚀 오프라인 학습만 수행하고 종료합니다.", flush=True)
+        logger.info("🚀 오프라인 학습 후 종료")
         sys.exit(0)
 
     agent.run()

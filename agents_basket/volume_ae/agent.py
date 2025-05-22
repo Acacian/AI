@@ -1,4 +1,5 @@
-import os, sys, json, yaml, glob, torch
+import os, sys, json, yaml, glob, logging
+import torch
 import torch.nn as nn
 import torch.optim as optim
 import polars as pl
@@ -10,6 +11,15 @@ load_dotenv()
 
 onnx_version = int(os.getenv("Onnx_Version", 17))
 mode = os.getenv("MODE", "prod").lower()
+
+# Logging 설정
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | VolumeAE | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("VolumeAE")
 
 class Agent:
     def __init__(self, config_path):
@@ -37,7 +47,7 @@ class Agent:
         self.loss_fn = nn.MSELoss(reduction="none")
         self.batch = []
 
-        print(f"📦 VolumeAE Initialized - Topic: {self.topic}", flush=True)
+        logger.info(f"📦 Initialized - Topic: {self.topic}")
 
     def train_step(self):
         self.model.train()
@@ -47,7 +57,7 @@ class Agent:
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
-        print(f"🔊 Volume TransformerAE Loss: {loss.item():.6f}", flush=True)
+        logger.info(f"🔊 Loss: {loss.item():.6f}")
 
     def compute_recon_score(self, x_batch):
         self.model.eval()
@@ -68,13 +78,13 @@ class Agent:
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
             opset_version=onnx_version
         )
-        print(f"✅ ONNX Exported: {self.model_path}", flush=True)
+        logger.info(f"✅ ONNX Exported: {self.model_path}")
 
     def should_pretrain(self):
         return not os.path.exists(self.model_path)
 
     def run_offline(self, data_dir="data"):
-        print("📂 [Offline] VolumeAE 선학습 시작", flush=True)
+        logger.info("📂 [Offline] 선학습 시작")
         files = sorted(glob.glob(os.path.join(data_dir, "*/*.parquet")))
 
         for file_path in files:
@@ -90,18 +100,18 @@ class Agent:
                         self.train_step()
                         self.batch.clear()
             except Exception as e:
-                print(f"⚠️ [Offline] {file_path} 처리 실패: {e}", flush=True)
+                logger.warning(f"⚠️ [Offline] {file_path} 처리 실패: {e}")
 
         if self.batch:
             self.train_step()
             self.batch.clear()
 
         self.export_onnx()
-        print("✅ [Offline] 학습 완료", flush=True)
+        logger.info("✅ [Offline] 학습 완료")
 
     def run(self):
         if self.should_pretrain():
-            print("🧠 모델 없음 → 오프라인 학습 수행", flush=True)
+            logger.info("🧠 모델 없음 → 오프라인 학습 수행")
             self.run_offline()
 
         consumer = KafkaConsumer(
@@ -111,7 +121,7 @@ class Agent:
             auto_offset_reset="latest",
             group_id="volume_ae_group"
         )
-        print(f"📡 Listening on: {self.topic}", flush=True)
+        logger.info(f"📡 Kafka Listening - {self.topic}")
 
         for msg in consumer:
             features = msg.value.get("input")
@@ -124,16 +134,16 @@ class Agent:
                     self.train_step()
                     recon_errors, flags = self.compute_recon_score(self.batch)
                     for err, flag in zip(recon_errors, flags):
-                        print(f"  📊 Error: {err:.4f} | Volume anomaly: {'❌' if flag else '✅'}", flush=True)
+                        logger.info(f"  📊 Error: {err:.4f} | Volume anomaly: {'❌' if flag else '✅'}")
                     self.export_onnx()
                 except Exception as e:
-                    print(f"❌ Train error: {e}", flush=True)
+                    logger.error(f"❌ Train error: {e}")
                 finally:
                     self.batch.clear()
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("❌ 사용법: python -m agents_basket.volume_ae.agent <config_path> [offline]", flush=True)
+        logger.error("❌ 사용법: python -m agents_basket.volume_ae.agent <config_path> [offline]")
         sys.exit(1)
 
     config_path = sys.argv[1]
@@ -143,7 +153,7 @@ if __name__ == "__main__":
 
     if is_offline:
         agent.run_offline()
-        print("🛑 오프라인 학습만 수행 후 종료", flush=True)
+        logger.info("🛑 오프라인 학습만 수행 후 종료")
         sys.exit(0)
 
     agent.run()

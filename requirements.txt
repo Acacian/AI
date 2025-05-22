@@ -10,8 +10,11 @@ pyyaml
 # Triton Inference Server 통신
 tritonclient[http]
 
-# PyTorch 모델 생성 및 ONNX 변환
-torch
+# PyTorch + ONNX (CUDA 12.1 기준)
+torch==2.1.2+cu121
+torchvision==0.16.2+cu121
+torchaudio==2.1.2+cu121
+--extra-index-url https://download.pytorch.org/whl/cu121
 onnx
 
 # ML/통계 처리용
@@ -22,6 +25,6 @@ scikit-learn
 # 시각화
 tqdm
 
-# Data, Database
+# 데이터 수집 및 처리
 yfinance
 duckdb

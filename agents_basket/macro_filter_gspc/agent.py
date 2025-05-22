@@ -1,4 +1,4 @@
-import os, sys, glob, json, yaml
+import os, sys, glob, json, yaml, logging
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,6 +12,15 @@ load_dotenv()
 onnx_version = int(os.getenv("Onnx_Version", 17))
 mode = os.getenv("MODE", "prod").lower()
 
+# Logging 설정
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("MacroFilter")
+
 class Agent:
     def __init__(self, config_path: str):
         with open(config_path, 'r') as f:
@@ -19,13 +28,12 @@ class Agent:
 
         self.topic = self.config["topic"]
         self.model_path = self.config["model_path"]
-        self.batch_size = 1 if mode == "test" else self.config.get('batch_size', 32)
+        self.batch_size = 1 if mode == "test" else self.config.get("batch_size", 32)
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
         self.input_dim = self.config.get("input_dim", 5)
         self.d_model = self.config.get("d_model", 64)
         self.threshold = self.config.get("recon_error_threshold", 0.05)
-
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         self.model = TransformerAE(
@@ -46,7 +54,7 @@ class Agent:
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
-        print(f"🌐 Macro AE Loss: {loss.item():.6f}")
+        logger.info(f"🌐 Macro AE Loss: {loss.item():.6f}")
 
     def compute_recon_score(self, x_batch):
         self.model.eval()
@@ -67,10 +75,10 @@ class Agent:
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
             opset_version=onnx_version
         )
-        print(f"✅ ONNX Exported: {self.model_path}")
+        logger.info(f"✅ ONNX Exported: {self.model_path}")
 
     def run_offline(self, data_dir="data"):
-        print("📂 로컬 데이터 기반 오프라인 학습 시작")
+        logger.info("📂 로컬 데이터 기반 오프라인 학습 시작")
         pattern = os.path.join(data_dir, "*/*.parquet")
         files = sorted(glob.glob(pattern))
 
@@ -90,21 +98,21 @@ class Agent:
                         self.batch.clear()
 
             except Exception as e:
-                print(f"⚠️ {file_path} 처리 실패: {e}")
+                logger.warning(f"⚠️ {file_path} 처리 실패: {e}")
 
         if self.batch:
             self.train_step()
             self.batch.clear()
 
         self.export_onnx()
-        print("✅ 오프라인 학습 완료")
+        logger.info("✅ 오프라인 학습 완료")
 
     def should_pretrain(self):
         return not os.path.exists(self.model_path)
 
     def run(self):
         if self.should_pretrain():
-            print("🧠 모델 파일이 없어 오프라인 학습을 먼저 수행합니다.")
+            logger.info("🧠 모델 파일이 없어 오프라인 학습을 먼저 수행합니다.")
             self.run_offline()
 
         consumer = KafkaConsumer(
@@ -114,7 +122,7 @@ class Agent:
             auto_offset_reset="latest",
             group_id="macro_filter_group"
         )
-        print(f"🧠 MacroFilter consuming from: {self.topic}")
+        logger.info(f"📡 MacroFilter consuming from: {self.topic}")
 
         for msg in consumer:
             features = msg.value.get("input")
@@ -122,23 +130,23 @@ class Agent:
                 continue
 
             features = features[-self.sequence_length:]
-
             self.batch.append(features)
+
             if len(self.batch) >= self.batch_size:
                 try:
                     self.train_step()
                     recon_errors, flags = self.compute_recon_score(self.batch)
                     for err, flag in zip(recon_errors, flags):
-                        print(f"  📉 Error: {err:.4f} | Macro anomaly: {'❌' if flag else '✅'}")
+                        logger.info(f"  📉 Error: {err:.4f} | Macro anomaly: {'❌' if flag else '✅'}")
                     self.export_onnx()
                 except Exception as e:
-                    print(f"❌ Train error: {e}")
+                    logger.error(f"❌ Train error: {e}")
                 finally:
                     self.batch.clear()
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("❌ 사용법: python -m agents_basket.macro_filter.agent <config_path> [offline]")
+        logger.error("❌ 사용법: python -m agents_basket.macro_filter.agent <config_path> [offline]")
         sys.exit(1)
 
     config_path = sys.argv[1]
@@ -148,7 +156,7 @@ if __name__ == "__main__":
 
     if is_offline_mode:
         agent.run_offline()
-        print("🚀 초기 오프라인 학습만 실행 후 종료합니다.")
+        logger.info("🚀 초기 오프라인 학습만 실행 후 종료합니다.")
         sys.exit(0)
     else:
         agent.run()
