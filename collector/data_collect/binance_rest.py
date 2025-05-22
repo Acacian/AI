@@ -5,12 +5,31 @@ import datetime
 
 BINANCE_API_URL = "https://api.binance.com/api/v3/klines"
 
-def fetch_binance_symbol(symbol: str, interval: str, limit: int = 1000):
+def fetch_binance_symbol(
+    symbol: str,
+    interval: str,
+    limit: int = 1000,
+    date_str: str = None,
+    startTime: int = None,
+    endTime: int = None
+):
     params = {
         "symbol": symbol,
         "interval": interval,
         "limit": limit
     }
+
+    if startTime:
+        params["startTime"] = startTime
+    if endTime:
+        params["endTime"] = endTime
+
+    # 일봉에 대해 미래 데이터 요청 방지
+    if date_str and interval == "1d":
+        today_str = datetime.datetime.utcnow().strftime("%Y-%m-%d")
+        if date_str >= today_str:
+            print(f"⚠️ {symbol}-{interval} | {date_str} 일봉은 Binance에서 아직 제공되지 않음 (skip)")
+            return None
 
     for attempt in range(3):
         try:
