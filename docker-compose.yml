@@ -37,6 +37,8 @@ services:
         condition: service_healthy
     volumes:
       - ./models:/models
+      - ./data:/app/data
+      - ./duckdb:/app/duckdb
     env_file:
       - .env
     networks:

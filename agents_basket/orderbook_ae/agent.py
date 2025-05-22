@@ -1,4 +1,5 @@
 import os, sys, glob, json, yaml
+from collections import deque
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -118,6 +119,8 @@ class OrderbookAgent:
             print("🧠 모델 파일이 없어 오프라인 학습을 먼저 수행합니다.")
             self.run_offline()
 
+        self.sequence_buffer = deque(maxlen=self.sequence_length)
+
         consumer = KafkaConsumer(
             self.topic,
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
@@ -139,7 +142,10 @@ class OrderbookAgent:
             if len(flattened) != self.input_dim:
                 continue
 
-            self.batch.append(flattened)
+            self.sequence_buffer.append(flattened)
+
+            if len(self.sequence_buffer) == self.sequence_length:
+                self.batch.append(list(self.sequence_buffer))  # 시퀀스 단위 추가
 
             if len(self.batch) >= self.batch_size:
                 try:

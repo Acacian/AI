@@ -98,16 +98,21 @@ class PatternAEAgent:
 
         for msg in consumer:
             features = msg.value.get("input")
-            if not features or len(features) != self.sequence_length:
+            if not features or len(features) < self.sequence_length:
                 continue
-            self.batch.append(features)
 
+            features = features[-self.sequence_length:]
+
+            self.batch.append(features)
             if len(self.batch) >= self.batch_size:
                 try:
                     self.train_step()
+                    recon_errors, flags = self.compute_recon_score(self.batch)
+                    for err, flag in zip(recon_errors, flags):
+                        print(f"  📉 Error: {err:.4f} | Macro anomaly: {'❌' if flag else '✅'}")
                     self.export_onnx()
                 except Exception as e:
-                    print(f"❌ Train error: {e}", flush=True)
+                    print(f"❌ Train error: {e}")
                 finally:
                     self.batch.clear()
 

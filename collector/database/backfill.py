@@ -158,10 +158,6 @@ def backfill(symbol: str, interval: str):
                         for k, row in zip(klines, processed)
                     ]
 
-                    for agent, topic_tpl in TOPICS.items():
-                        topic = topic_tpl.format(symbol=kafka_safe_symbol(symbol), interval=interval)
-                        publish(topic, {"input": processed})
-
                     save_parquet(file_path, processed_rows)
                     save_last_timestamp(meta_path, key, klines[-1]["timestamp"])
                     pbar.set_postfix_str(f"📥 Saved {date_str}")

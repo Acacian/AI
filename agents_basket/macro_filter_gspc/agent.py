@@ -118,8 +118,10 @@ class Agent:
 
         for msg in consumer:
             features = msg.value.get("input")
-            if not features or len(features) != self.sequence_length:
+            if not features or len(features) < self.sequence_length:
                 continue
+
+            features = features[-self.sequence_length:]
 
             self.batch.append(features)
             if len(self.batch) >= self.batch_size:

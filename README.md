@@ -55,30 +55,18 @@ LLM은 이를 토대로 의사결정을 진행하며 MPC Agents에서 비율, �
 
 ```mermaid
 flowchart TD
+
   subgraph Collector
-    A1[Binance API] --> A2[Collector]
-    A2 -->|features| Kafka
+    A1[Binance API / YFinance] --> A2[Collector + Backfill]
+    A2 -->|Parquet| DuckDB
   end
 
-  subgraph Kafka Broker
-    Kafka[(Kafka)]
+  subgraph AgentLayer
+    DuckDB --> B1[Agents (GPU / TransformerAE)]
+    B1 -->|ONNX| Models
   end
 
-  subgraph Agents
-    Kafka --> B1[multi_agent_runner]
-    B1 --> B2[pattern_ae]
-    B1 --> B3[risk_scorer]
-    B1 --> B4[volume_ae]
-    B1 --> B5[trend_segmenter]
-    B1 --> B6[volatility_watcher]
-    B2 -->|ONNX| Models
-    B3 -->|ONNX| Models
-    B4 -->|ONNX| Models
-    B5 -->|ONNX| Models
-    B6 -->|ONNX| Models
-  end
-
-  subgraph Models Dir
+  subgraph ModelExport
     Models[/models/]
   end
 
@@ -86,24 +74,26 @@ flowchart TD
     Models --> T1[Triton Inference Server]
   end
 
-  subgraph Gateway
-    Kafka --> G1[Gateway]
-    G1 --> T1
-    T1 --> G1
-    G1 -->|inference result| Kafka
+  subgraph LLM
+    T1 --> L1[LLM Agent\n(전략 생성 + 조건식 + 신뢰도)]
+    L1 -->|전략| MPC
   end
 
-  subgraph SignalProcessor
-    Kafka --> S1[Signal Processor]
-    S1 -->|Buy/Sell Signal| Exec
+  subgraph MPC
+    MPC[MPC Agent\n(Earning 주체)]
+    MPC -->|실행 결정| TradeExec[실거래]
+    MPC -->|시뮬레이션| Backtest
   end
 
-  subgraph Execution
-    Exec[Execution Engine]
+  subgraph Feedback
+    TradeExec --> R1[Result Store]
+    Backtest --> R1
+    R1 -->|결과 평가| StrategyEval[전략 강화/폐기]
   end
 
   subgraph Optional
     Redis[(Redis)]
+    Kafka[(Kafka)]
     KafkaUI[Kafka UI]
   end
 ```

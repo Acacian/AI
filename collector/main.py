@@ -48,6 +48,9 @@ print("📁 DuckDB 병합 시작...")
 for interval in INTERVALS:
     merge_parquet_dir(interval)
 
+with open("duckdb/.ready", "w") as f:
+    f.write("collector_done")
+print("✅ 백필 + DuckDB 병합 완료: /app/duckdb/.ready 생성됨")
 
 ## Collecting Stage
 while True:
@@ -109,4 +112,3 @@ while True:
 
     elapsed = time.time() - start
     time.sleep(max(0, 60 - elapsed))
-

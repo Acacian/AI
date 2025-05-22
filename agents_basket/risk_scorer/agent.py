@@ -123,8 +123,13 @@ class RiskScorerAgent:
             x = value.get("input")
             y = value.get("target")
 
-            if not x or y is None or len(x) != self.sequence_length:
-                continue
+            if (
+                not x
+                or y is None
+                or len(x) != self.sequence_length
+                or not all(isinstance(row, list) and len(row) == self.input_dim for row in x)
+            ):
+                continue  # shape 검증 실패 시 무시
 
             self.batch_x.append(x)
             self.batch_y.append(y)

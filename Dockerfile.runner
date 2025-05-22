@@ -8,10 +8,14 @@ COPY multi_agent_runner/ ./multi_agent_runner/
 COPY agents_basket/ ./agents_basket/
 COPY data/ ./data/
 COPY duckdb/ ./duckdb/
+COPY models/ ./models/
+COPY multi_agent_runner/entrypoint.sh /app/entrypoint.sh
 
-# 필요 시 requirements.txt 존재 시 설치
+# 패키지 설치 + 실행 권한 부여
 COPY requirements.txt ./
 RUN pip install --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt \
+    && chmod +x /app/entrypoint.sh
 
-CMD ["python", "multi_agent_runner/main.py"]
+# collector 완료 확인 후 실행
+ENTRYPOINT ["/app/entrypoint.sh"]
