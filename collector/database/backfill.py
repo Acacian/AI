@@ -119,6 +119,9 @@ def fetch_full_day_klines(symbol, interval, limit, date_str):
 
     return all_data
 
+def safe_val(v):
+    return float(v[0]) if isinstance(v, list) else float(v)
+
 def backfill(symbol: str, interval: str):
     data_dir, meta_path = get_paths(symbol, interval)
     os.makedirs(data_dir, exist_ok=True)
@@ -141,7 +144,7 @@ def backfill(symbol: str, interval: str):
                     klines = fetch_full_day_klines(symbol, interval, LIMIT, date_str)
 
                 if klines:
-                    raw = [[k["open"], k["high"], k["low"], k["close"], k["volume"]] for k in klines]
+                    raw = [[safe_val(k["open"]), safe_val(k["high"]), safe_val(k["low"]), safe_val(k["close"]), safe_val(k["volume"])] for k in klines]
                     processed = preprocess_ohlcv(raw)
 
                     processed_rows = [
