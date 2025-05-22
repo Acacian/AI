@@ -57,36 +57,32 @@ LLM은 이를 토대로 의사결정을 진행하며 MPC Agents에서 비율, �
 flowchart TD
 
   subgraph Collector
-    A1[Binance API / YFinance] --> A2[Collector and Backfill]
-    A2 -->|Parquet| D1[DuckDB]
+    A1[Binance API / YFinance] --> A2[Collector + Backfill]
+    A2 -->|Parquet Files| D1[DuckDB]
   end
 
-  subgraph AgentLayer
-    D1 --> B1[Agents]:::gpu
-    B1 -->|ONNX| M1[ONNX Models]
+  subgraph Agents
+    D1 --> B1[Agents - TransformerAE]
+    B1 --> M1[ONNX Models]
   end
 
   subgraph Triton
-    M1 --> T1[Triton Server]
+    M1 --> T1[Triton Inference Server]
   end
 
   subgraph LLM
     T1 --> L1[LLM Agent]
-    L1 -->|전략| MPC
+    L1 --> MPC[MPC Agent]
   end
 
-  subgraph MPC
-    MPC --> T2[Trade Execution]
+  subgraph Execution
+    MPC --> T2[Real Trade]
     MPC --> T3[Backtest]
   end
 
-  subgraph Feedback
-    T2 --> R1[Result Store]
-    T3 --> R1
-    R1 --> F1[Strategy Evaluation]
-  end
-
-  classDef gpu fill=#f0f8ff,stroke=#4682b4,stroke-width=1.5;
+  T2 --> R1[Result Storage]
+  T3 --> R1
+  R1 --> E1[Evaluation & Strategy Update]
 ```
 
 ## Port
