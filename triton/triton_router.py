@@ -1,8 +1,8 @@
 import json
 import yaml
 from kafka import KafkaConsumer
-from triton.triton_client import TritonClient
-from triton.kafka_utils import send_message
+from triton_client import TritonClient
+from kafka_utils import send_message
 
 KAFKA_BROKER = "kafka:9092"
 CONFIG_PATH = "triton/config.yml"

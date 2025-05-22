@@ -37,6 +37,8 @@ services:
         condition: service_healthy
     volumes:
       - ./models:/models
+    env_file:
+      - .env
     networks:
       - ainet
     restart: always

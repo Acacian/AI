@@ -26,6 +26,7 @@ class Scheduler:
 
     def _save_cache(self):
         if not self.cache_file:
+            print("⚠️ 캐시 파일 경로 미지정, 저장 생략됨")
             return
         try:
             with open(self.cache_file, "w") as f:

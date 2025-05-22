@@ -146,14 +146,14 @@ def backfill(symbol: str, interval: str):
 
                     processed_rows = [
                         {
-                            "timestamp": k["timestamp"],
-                            "symbol": k["symbol"],
-                            "interval": k["interval"],
-                            "open": row[0],
-                            "high": row[1],
-                            "low": row[2],
-                            "close": row[3],
-                            "volume": row[4],
+                            "timestamp": int(k["timestamp"]),
+                            "symbol": str(k["symbol"]),
+                            "interval": str(k["interval"]),
+                            "open": float(row[0]),
+                            "high": float(row[1]),
+                            "low": float(row[2]),
+                            "close": float(row[3]),
+                            "volume": float(row[4]),
                         }
                         for k, row in zip(klines, processed)
                     ]

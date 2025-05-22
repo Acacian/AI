@@ -71,7 +71,8 @@ def publish(topic: str, message: dict):
 def backup(topic: str, message: dict):
     os.makedirs("backup", exist_ok=True)
     date_str = datetime.utcnow().strftime("%Y-%m-%d")
-    file_path = os.path.join("backup", f"{topic}_{date_str}.jsonl")
+    safe_topic = topic.replace("/", "_")
+    file_path = os.path.join("backup", f"{safe_topic}_{date_str}.jsonl")
 
     try:
         with open(file_path, "a") as f:
