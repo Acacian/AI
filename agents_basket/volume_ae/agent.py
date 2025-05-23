@@ -1,4 +1,9 @@
-import os, sys, json, yaml, glob, logging
+import os
+import sys
+import json
+import yaml
+import logging
+import duckdb
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -11,8 +16,8 @@ load_dotenv()
 
 onnx_version = int(os.getenv("Onnx_Version", 17))
 mode = os.getenv("MODE", "prod").lower()
+DUCKDB_DIR = "duckdb"
 
-# Logging 설정
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | VolumeAE | %(levelname)s | %(message)s",
@@ -21,7 +26,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("VolumeAE")
 
-class Agent:
+class VolumeAEAgent:
     def __init__(self, config_path):
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
@@ -83,35 +88,43 @@ class Agent:
     def should_pretrain(self):
         return not os.path.exists(self.model_path)
 
-    def run_offline(self, data_dir="data"):
-        logger.info("📂 [Offline] 선학습 시작")
-        files = sorted(glob.glob(os.path.join(data_dir, "*/*.parquet")))
-
-        for file_path in files:
+    def run_offline(self):
+        logger.info("🦆 DuckDB 기반 오프라인 학습 시작")
+        for db_file in sorted(os.listdir(DUCKDB_DIR)):
+            if not db_file.endswith(".db"):
+                continue
+            db_path = os.path.join(DUCKDB_DIR, db_file)
+            con = duckdb.connect(db_path)
             try:
-                df = pl.read_parquet(file_path)
-                if df.shape[0] < self.sequence_length:
-                    continue
-                data = df.select(["open", "high", "low", "close", "volume"]).to_numpy()
-                for i in range(len(data) - self.sequence_length + 1):
-                    seq = data[i:i+self.sequence_length].tolist()
-                    self.batch.append(seq)
-                    if len(self.batch) >= self.batch_size:
-                        self.train_step()
-                        self.batch.clear()
-            except Exception as e:
-                logger.warning(f"⚠️ [Offline] {file_path} 처리 실패: {e}")
+                tables = con.execute("SHOW TABLES").fetchall()
+                for (table_name,) in tables:
+                    try:
+                        df = con.execute(
+                            f"SELECT open, high, low, close, volume FROM {table_name}"
+                        ).fetchdf()
+                        data = df.to_numpy()
+                        if len(data) < self.sequence_length:
+                            continue
+                        for i in range(len(data) - self.sequence_length + 1):
+                            seq = data[i:i+self.sequence_length].tolist()
+                            self.batch.append(seq)
+                            if len(self.batch) >= self.batch_size:
+                                self.train_step()
+                                self.batch.clear()
+                    except Exception as e:
+                        logger.warning(f"⚠️ Table {table_name} 처리 실패: {e}")
+            finally:
+                con.close()
 
         if self.batch:
             self.train_step()
             self.batch.clear()
 
         self.export_onnx()
-        logger.info("✅ [Offline] 학습 완료")
+        logger.info("✅ 오프라인 학습 완료")
 
     def run(self):
         if self.should_pretrain():
-            logger.info("🧠 모델 없음 → 오프라인 학습 수행")
             self.run_offline()
 
         consumer = KafkaConsumer(
@@ -119,16 +132,18 @@ class Agent:
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
             value_deserializer=lambda v: json.loads(v.decode("utf-8")),
             auto_offset_reset="latest",
-            group_id="volume_ae_group"
+            group_id=f"volume_ae_group_{os.getpid()}"
         )
         logger.info(f"📡 Kafka Listening - {self.topic}")
 
         for msg in consumer:
-            features = msg.value.get("input")
-            if not features or len(features) != self.sequence_length:
+            value = msg.value
+            x = value.get("input")
+
+            if not x or len(x) != self.sequence_length:
                 continue
 
-            self.batch.append(features)
+            self.batch.append(x)
             if len(self.batch) >= self.batch_size:
                 try:
                     self.train_step()
@@ -149,7 +164,7 @@ if __name__ == "__main__":
     config_path = sys.argv[1]
     is_offline = len(sys.argv) >= 3 and sys.argv[2].lower() == "offline"
 
-    agent = Agent(config_path)
+    agent = VolumeAEAgent(config_path)
 
     if is_offline:
         agent.run_offline()

@@ -12,7 +12,6 @@ load_dotenv()
 onnx_version = int(os.getenv("Onnx_Version", 17))
 mode = os.getenv("MODE", "prod").lower()
 
-# Logging 설정
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
@@ -27,8 +26,8 @@ class Agent:
             self.config = yaml.safe_load(f)
 
         self.topic = self.config["topic"]
-        self.model_base_path = self.config["model_path"]  # 디렉토리 기준
-        self.batch_size = 1 if mode == "test" else self.config.get("batch_size", 32)
+        self.model_base_path = self.config["model_path"]
+        self.batch_size = 1 if mode == "test" else self.config.get('batch_size', 32)
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
         self.input_dim = self.config.get("input_dim", 5)
@@ -54,7 +53,7 @@ class Agent:
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
-        logger.info(f"🌐 Macro AE Loss: {loss.item():.6f}")
+        logger.info(f"📈 Macro AE Loss: {loss.item():.6f}")
 
     def compute_recon_score(self, x_batch):
         self.model.eval()
@@ -65,22 +64,21 @@ class Agent:
             flags = (error > self.threshold).float()
         return error.tolist(), flags.tolist()
 
-    def export_onnx(self, interval):
+    def export_onnx(self, symbol: str, interval: str):
         self.model.eval()
         dummy_input = torch.randn(1, self.sequence_length, self.input_dim).to(self.device)
-        interval_model_path = os.path.join(self.model_base_path, interval, "model.onnx")
-        os.makedirs(os.path.dirname(interval_model_path), exist_ok=True)
+        path = os.path.join(self.model_base_path, interval, symbol, "model.onnx")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.onnx.export(
-            self.model, dummy_input, interval_model_path,
+            self.model, dummy_input, path,
             input_names=["INPUT"], output_names=["OUTPUT"],
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
             opset_version=onnx_version
         )
-        logger.info(f"✅ ONNX Exported: {interval_model_path}")
+        logger.info(f"✅ ONNX Exported: {path}")
 
     def run_offline(self, duckdb_dir="duckdb"):
         logger.info("🦆 DuckDB 기반 오프라인 학습 시작")
-
         intervals = self.config.get("intervals", ["1d"])
         for interval in intervals:
             db_path = os.path.join(duckdb_dir, f"merged_{interval}.db")
@@ -90,10 +88,8 @@ class Agent:
 
             logger.info(f"📂 {interval} 학습 시작 ({db_path})")
             con = duckdb.connect(db_path)
-
             try:
                 tables = con.execute("SHOW TABLES").fetchall()
-
                 for (table_name,) in tables:
                     try:
                         df = con.execute(
@@ -102,28 +98,18 @@ class Agent:
                         df = pl.DataFrame(df)
                         if df.shape[0] < self.sequence_length:
                             continue
-
                         data = df.to_numpy(dtype=float)
                         for i in range(len(data) - self.sequence_length + 1):
                             seq = data[i:i+self.sequence_length].tolist()
                             self.batch.append(seq)
-
                             if len(self.batch) >= self.batch_size:
                                 self.train_step()
                                 self.batch.clear()
-
+                        self.export_onnx(symbol=table_name, interval=interval)
                     except Exception as e:
                         logger.warning(f"⚠️ {table_name} 처리 실패: {e}")
-
             finally:
                 con.close()
-
-            if self.batch:
-                self.train_step()
-                self.batch.clear()
-
-            self.export_onnx(interval)
-
         logger.info("✅ 오프라인 학습 완료")
 
     def should_pretrain(self):
@@ -144,20 +130,21 @@ class Agent:
         logger.info(f"📡 MacroFilter consuming from: {self.topic}")
 
         for msg in consumer:
-            features = msg.value.get("input")
+            value = msg.value
+            symbol = value.get("symbol", "unknown")
+            interval = value.get("interval", "stream")
+            features = value.get("input")
             if not features or len(features) < self.sequence_length:
                 continue
-
             features = features[-self.sequence_length:]
             self.batch.append(features)
-
             if len(self.batch) >= self.batch_size:
                 try:
                     self.train_step()
                     recon_errors, flags = self.compute_recon_score(self.batch)
                     for err, flag in zip(recon_errors, flags):
-                        logger.info(f"  📉 Error: {err:.4f} | Macro anomaly: {'❌' if flag else '✅'}")
-                    self.export_onnx("stream")
+                        logger.info(f"  🔎 Error: {err:.4f} | Macro anomaly: {'❌' if flag else '✅'}")
+                    self.export_onnx(symbol=symbol, interval=interval)
                 except Exception as e:
                     logger.error(f"❌ Train error: {e}")
                 finally:

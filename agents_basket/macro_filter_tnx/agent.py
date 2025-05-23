@@ -1,4 +1,4 @@
-import os, sys, glob, json, yaml, logging
+import os, sys, json, yaml, logging, duckdb
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -22,14 +22,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("MacroFilter")
 
-
 class Agent:
     def __init__(self, config_path: str):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
 
         self.topic = self.config["topic"]
-        self.model_path = self.config["model_path"]
+        self.model_base_path = self.config["model_path"]
         self.batch_size = 1 if mode == "test" else self.config.get("batch_size", 32)
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
@@ -68,50 +67,56 @@ class Agent:
             flags = (error > self.threshold).float()
         return error.tolist(), flags.tolist()
 
-    def export_onnx(self):
+    def export_onnx(self, symbol: str, interval: str):
         self.model.eval()
         dummy_input = torch.randn(1, self.sequence_length, self.input_dim).to(self.device)
-        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+        path = os.path.join(self.model_base_path, interval, symbol, "model.onnx")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.onnx.export(
-            self.model, dummy_input, self.model_path,
+            self.model, dummy_input, path,
             input_names=["INPUT"], output_names=["OUTPUT"],
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
             opset_version=onnx_version
         )
-        logger.info(f"✅ ONNX Exported: {self.model_path}")
+        logger.info(f"✅ ONNX Exported: {path}")
 
-    def run_offline(self, data_dir="data"):
-        logger.info("📂 로컬 데이터 기반 오프라인 학습 시작")
-        pattern = os.path.join(data_dir, "*/*.parquet")
-        files = sorted(glob.glob(pattern))
+    def run_offline(self, duckdb_dir="duckdb"):
+        logger.info("📂 DuckDB 기반 오프라인 학습 시작")
+        intervals = self.config.get("intervals", ["1d"])
+        for interval in intervals:
+            db_path = os.path.join(duckdb_dir, f"merged_{interval}.db")
+            if not os.path.exists(db_path):
+                logger.warning(f"⚠️ DB 없음: {db_path} → 스킵됨")
+                continue
 
-        for file_path in files:
+            logger.info(f"📂 {interval} 학습 시작 ({db_path})")
+            con = duckdb.connect(db_path)
             try:
-                df = pl.read_parquet(file_path)
-                if df.shape[0] < self.sequence_length:
-                    continue
-
-                data = df.select(["open", "high", "low", "close", "volume"]).to_numpy()
-                for i in range(len(data) - self.sequence_length + 1):
-                    seq = data[i:i + self.sequence_length].tolist()
-                    self.batch.append(seq)
-
-                    if len(self.batch) >= self.batch_size:
-                        self.train_step()
-                        self.batch.clear()
-
-            except Exception as e:
-                logger.warning(f"⚠️ {file_path} 처리 실패: {e}")
-
-        if self.batch:
-            self.train_step()
-            self.batch.clear()
-
-        self.export_onnx()
+                tables = con.execute("SHOW TABLES").fetchall()
+                for (table_name,) in tables:
+                    try:
+                        df = con.execute(
+                            f'SELECT open, high, low, close, volume FROM "{table_name}"'
+                        ).df()
+                        df = pl.DataFrame(df)
+                        if df.shape[0] < self.sequence_length:
+                            continue
+                        data = df.to_numpy(dtype=float)
+                        for i in range(len(data) - self.sequence_length + 1):
+                            seq = data[i:i+self.sequence_length].tolist()
+                            self.batch.append(seq)
+                            if len(self.batch) >= self.batch_size:
+                                self.train_step()
+                                self.batch.clear()
+                        self.export_onnx(symbol=table_name, interval=interval)
+                    except Exception as e:
+                        logger.warning(f"⚠️ {table_name} 처리 실패: {e}")
+            finally:
+                con.close()
         logger.info("✅ 오프라인 학습 완료")
 
     def should_pretrain(self):
-        return not os.path.exists(self.model_path)
+        return True
 
     def run(self):
         if self.should_pretrain():
@@ -128,25 +133,25 @@ class Agent:
         logger.info(f"📡 MacroFilter consuming from: {self.topic}")
 
         for msg in consumer:
-            features = msg.value.get("input")
+            value = msg.value
+            symbol = value.get("symbol", "unknown")
+            interval = value.get("interval", "stream")
+            features = value.get("input")
             if not features or len(features) < self.sequence_length:
                 continue
-
             features = features[-self.sequence_length:]
             self.batch.append(features)
-
             if len(self.batch) >= self.batch_size:
                 try:
                     self.train_step()
                     recon_errors, flags = self.compute_recon_score(self.batch)
                     for err, flag in zip(recon_errors, flags):
                         logger.info(f"  📉 Error: {err:.4f} | Macro anomaly: {'❌' if flag else '✅'}")
-                    self.export_onnx()
+                    self.export_onnx(symbol=symbol, interval=interval)
                 except Exception as e:
                     logger.error(f"❌ Train error: {e}")
                 finally:
                     self.batch.clear()
-
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

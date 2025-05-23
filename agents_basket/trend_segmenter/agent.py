@@ -1,8 +1,14 @@
-import os, sys, json, yaml, glob, logging
+import os
+import sys
+import json
+import yaml
+import logging
+import duckdb
+from collections import deque
+from datetime import datetime, timedelta
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import polars as pl
 from kafka import KafkaConsumer
 from dotenv import load_dotenv
 from .model import TrendSegmenterTransformer
@@ -11,8 +17,8 @@ load_dotenv()
 
 onnx_version = int(os.getenv("Onnx_Version", 17))
 mode = os.getenv("MODE", "prod").lower()
+DUCKDB_DIR = "duckdb"
 
-# 로깅 설정
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | TrendSegmenter | %(levelname)s | %(message)s",
@@ -21,7 +27,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("TrendSegmenter")
 
-class Agent:
+class TrendSegmenterAgent:
     def __init__(self, config_path):
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
@@ -36,7 +42,6 @@ class Agent:
         self.num_classes = self.config.get("num_classes", 3)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
         self.model = TrendSegmenterTransformer(
             input_dim=self.input_dim,
             sequence_length=self.sequence_length,
@@ -69,45 +74,47 @@ class Agent:
         dummy_input = torch.randn(1, self.sequence_length, self.input_dim).to(self.device)
         os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
         torch.onnx.export(
-            self.model,
-            dummy_input,
-            self.model_path,
-            input_names=["INPUT"],
-            output_names=["OUTPUT"],
+            self.model, dummy_input, self.model_path,
+            input_names=["INPUT"], output_names=["OUTPUT"],
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
             opset_version=onnx_version
         )
-        logger.info(f"✅ ONNX model saved: {self.model_path}")
+        logger.info(f"✅ ONNX model exported: {self.model_path}")
 
     def should_pretrain(self):
         return not os.path.exists(self.model_path)
 
-    def run_offline(self, data_dir="data"):
-        logger.info("📂 오프라인 학습 시작")
-        files = sorted(glob.glob(os.path.join(data_dir, "*/*.parquet")))
-
-        for file_path in files:
+    def run_offline(self):
+        logger.info("🦆 DuckDB 기반 오프라인 학습 시작")
+        for db_file in sorted(os.listdir(DUCKDB_DIR)):
+            if not db_file.endswith(".db"):
+                continue
+            db_path = os.path.join(DUCKDB_DIR, db_file)
+            con = duckdb.connect(db_path)
             try:
-                df = pl.read_parquet(file_path)
-                if df.shape[0] < self.sequence_length + 1 or "target" not in df.columns:
-                    continue
-
-                data = df.select(["open", "high", "low", "close", "volume"]).to_numpy()
-                targets = df["target"].to_numpy()
-
-                for i in range(len(data) - self.sequence_length):
-                    x = data[i:i+self.sequence_length].tolist()
-                    y = int(targets[i + self.sequence_length - 1])
-                    self.batch_x.append(x)
-                    self.batch_y.append(y)
-
-                    if len(self.batch_x) >= self.batch_size:
-                        self.train_step()
-                        self.batch_x.clear()
-                        self.batch_y.clear()
-
-            except Exception as e:
-                logger.warning(f"⚠️ 파일 처리 실패: {file_path} | {e}")
+                tables = con.execute("SHOW TABLES").fetchall()
+                for (table_name,) in tables:
+                    try:
+                        df = con.execute(
+                            f"SELECT open, high, low, close, volume, target FROM {table_name}"
+                        ).fetchdf()
+                        data = df[["open", "high", "low", "close", "volume"]].to_numpy()
+                        targets = df["target"].to_numpy()
+                        if len(data) < self.sequence_length + 1:
+                            continue
+                        for i in range(len(data) - self.sequence_length):
+                            x = data[i:i+self.sequence_length].tolist()
+                            y = int(targets[i + self.sequence_length - 1])
+                            self.batch_x.append(x)
+                            self.batch_y.append(y)
+                            if len(self.batch_x) >= self.batch_size:
+                                self.train_step()
+                                self.batch_x.clear()
+                                self.batch_y.clear()
+                    except Exception as e:
+                        logger.warning(f"⚠️ Table {table_name} 처리 실패: {e}")
+            finally:
+                con.close()
 
         if self.batch_x:
             self.train_step()
@@ -119,7 +126,6 @@ class Agent:
 
     def run(self):
         if self.should_pretrain():
-            logger.info("🧠 ONNX 모델 없음 → 오프라인 학습 먼저 수행")
             self.run_offline()
 
         consumer = KafkaConsumer(
@@ -127,16 +133,21 @@ class Agent:
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
             value_deserializer=lambda v: json.loads(v.decode("utf-8")),
             auto_offset_reset="latest",
-            group_id="trend_segmenter_group"
+            group_id=f"trend_segmenter_group_{os.getpid()}"
         )
+
         logger.info(f"📡 Kafka consuming from: {self.topic}")
 
         for msg in consumer:
-            data = msg.value
-            x = data.get("input")
-            y = data.get("target")
+            value = msg.value
+            x = value.get("input")
+            y = value.get("target")
 
-            if not x or y is None or len(x) != self.sequence_length:
+            if (
+                not x or y is None
+                or len(x) != self.sequence_length
+                or not all(isinstance(row, list) and len(row) == self.input_dim for row in x)
+            ):
                 continue
 
             self.batch_x.append(x)
@@ -160,7 +171,7 @@ if __name__ == "__main__":
     config_path = sys.argv[1]
     is_offline = len(sys.argv) >= 3 and sys.argv[2].lower() == "offline"
 
-    agent = Agent(config_path)
+    agent = TrendSegmenterAgent(config_path)
 
     if is_offline:
         agent.run_offline()

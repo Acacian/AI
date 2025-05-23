@@ -1,19 +1,24 @@
-import os, sys, glob, json, yaml, logging
+import os
+import sys
+import json
+import yaml
+import logging
+import duckdb
 from collections import deque
+from datetime import datetime, timedelta
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import polars as pl
 from kafka import KafkaConsumer
-from .model import TransformerAE
 from dotenv import load_dotenv
+from .model import TransformerAE
 
 load_dotenv()
 
 onnx_version = int(os.getenv("Onnx_Version", 17))
 mode = os.getenv("MODE", "prod").lower()
+DUCKDB_DIR = "duckdb_orderbook"
 
-# 로깅 설정
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s | OrderbookAgent | %(levelname)s | %(message)s",
@@ -21,7 +26,6 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger("OrderbookAgent")
-
 
 class OrderbookAgent:
     def __init__(self, config_path: str):
@@ -48,6 +52,7 @@ class OrderbookAgent:
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
         self.loss_fn = nn.MSELoss(reduction="none")
         self.batch = []
+        self.sequence_buffer = deque(maxlen=self.sequence_length)
 
         logger.info(f"🚀 Initialized with topic: {self.topic}")
 
@@ -90,33 +95,33 @@ class OrderbookAgent:
         )
         logger.info(f"✅ ONNX exported: {self.model_path}")
 
-    def run_offline(self, data_dir="data"):
-        logger.info("📂 오프라인 학습 시작")
-        pattern = os.path.join(data_dir, "*/*.parquet")
-        files = sorted(glob.glob(pattern))
-
-        for file_path in files:
+    def run_offline(self):
+        logger.info("🦆 DuckDB 기반 오프라인 학습 시작")
+        for db_file in sorted(os.listdir(DUCKDB_DIR)):
+            if not db_file.endswith(".db"):
+                continue
+            db_path = os.path.join(DUCKDB_DIR, db_file)
+            con = duckdb.connect(db_path)
             try:
-                df = pl.read_parquet(file_path)
-                if df.shape[0] < self.sequence_length:
-                    continue
-
-                data = df.to_numpy()
-                for i in range(len(data) - self.sequence_length + 1):
-                    seq = data[i:i+self.sequence_length].tolist()
-                    self.batch.append(seq)
-
-                    if len(self.batch) >= self.batch_size:
-                        self.train_step()
-                        self.batch.clear()
-
-            except Exception as e:
-                logger.warning(f"⚠️ 파일 처리 실패 {file_path}: {e}")
-
+                tables = con.execute("SHOW TABLES").fetchall()
+                for (table_name,) in tables:
+                    try:
+                        df = con.execute(f"SELECT bids, asks FROM {table_name}").fetchdf()
+                        data = [self.flatten_orderbook(json.loads(b), json.loads(a)) for b, a in zip(df["bids"], df["asks"])]
+                        for i in range(len(data) - self.sequence_length + 1):
+                            seq = data[i:i+self.sequence_length]
+                            if all(len(row) == self.input_dim for row in seq):
+                                self.batch.append(seq)
+                            if len(self.batch) >= self.batch_size:
+                                self.train_step()
+                                self.batch.clear()
+                    except Exception as e:
+                        logger.warning(f"⚠️ Table {table_name} 처리 실패: {e}")
+            finally:
+                con.close()
         if self.batch:
             self.train_step()
             self.batch.clear()
-
         self.export_onnx()
         logger.info("✅ 오프라인 학습 완료")
 
@@ -125,10 +130,7 @@ class OrderbookAgent:
 
     def run(self):
         if self.should_pretrain():
-            logger.info("🧠 모델이 없어 오프라인 학습 먼저 수행")
             self.run_offline()
-
-        self.sequence_buffer = deque(maxlen=self.sequence_length)
 
         consumer = KafkaConsumer(
             self.topic,
@@ -168,10 +170,9 @@ class OrderbookAgent:
                 finally:
                     self.batch.clear()
 
-
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        logger.error("❌ 사용법: python -m agents_basket.<agent_name>.agent <config_path> [offline]")
+        logger.error("❌ 사용법: python -m agents_basket.orderbook.agent <config_path> [offline]")
         sys.exit(1)
 
     config_path = sys.argv[1]

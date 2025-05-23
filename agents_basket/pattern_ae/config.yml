@@ -1,5 +1,5 @@
 topic: pattern_training_btcusdt
-model_path: /models/pattern_ae/1/model.onnx
+model_path: /models/pattern_ae
 learning_rate: 0.001
 input_dim: 5
 sequence_length: 100
