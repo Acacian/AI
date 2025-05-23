@@ -3,9 +3,11 @@ topics:
   trend_training_btcusdt_1m: trend_segmenter
   noise_training_btcusdt_1m: noise_filter
   risk_training_btcusdt_1m: risk_scorer
-  pattern_training_btcusdt_1m: pattern
+  pattern_training_btcusdt_1m: pattern_ae
   volume_training_btcusdt_1m: volume_ae
-  macro_training_btcusdt_1m: macro_filter
+  macro_training___tnx_1d: macro_filter_tnx
+  macro_training___gspc_1d: macro_filter_gspc
+  macro_training_gc_f_1d: macro_filter_gold
   overheat_training_btcusdt_1m: overheat_detector
   volatility_training_btcusdt_1m: volatility_watcher
 
@@ -13,5 +15,7 @@ routing:
   liquidity_training_btcusdt_1m: risk_training_btcusdt_1m
   trend_training_btcusdt_1m: risk_training_btcusdt_1m
   noise_training_btcusdt_1m: risk_training_btcusdt_1m
-  macro_training_btcusdt_1m: risk_training_btcusdt_1m
+  macro_training___tnx_1d: risk_training_btcusdt_1m
+  macro_training___gspc_1d: risk_training_btcusdt_1m
+  macro_training_gc_f_1d: risk_training_btcusdt_1m
   risk_training_btcusdt_1m: signal_input_btcusdt_1m

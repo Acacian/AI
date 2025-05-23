@@ -95,6 +95,7 @@ class Agent:
                     self.batch.append(seq)
 
                     if len(self.batch) >= self.batch_size:
+                        logger.info(f"💡 오프라인 학습: 배치 도달 ({len(self.batch)})")
                         self.train_step()
                         self.batch.clear()
 
@@ -109,7 +110,9 @@ class Agent:
         logger.info("✅ 오프라인 학습 완료")
 
     def should_pretrain(self):
-        return not os.path.exists(self.model_path)
+        exists = os.path.isfile(self.model_path)
+        logger.info(f"🔍 모델 존재 여부 확인: {self.model_path} → {'있음' if exists else '없음'}")
+        return not exists
 
     def run(self):
         if self.should_pretrain():
@@ -121,28 +124,38 @@ class Agent:
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
             value_deserializer=lambda v: json.loads(v.decode("utf-8")),
             auto_offset_reset="latest",
-            group_id="liquidity_detector_group"
+            group_id="pattern_ae_group"
         )
-        logger.info(f"🔵 LiquidityDetector consuming from: {self.topic}")
+        logger.info(f"📊 Kafka consuming from: {self.topic}")
 
         for msg in consumer:
             features = msg.value.get("input")
+            logger.info(f"📥 메시지 수신: 길이={len(features) if features else 0} | 최소 필요={self.sequence_length}")
+
             if not features or len(features) < self.sequence_length:
+                logger.warning("⚠️ 시퀀스 길이 부족 → 무시됨")
                 continue
 
             features = features[-self.sequence_length:]
             self.batch.append(features)
+            logger.info(f"📦 배치 수집됨 | 현재 길이={len(self.batch)} / 필요={self.batch_size}")
 
             if len(self.batch) >= self.batch_size:
                 try:
+                    logger.info("🚀 train_step() 진입")
                     self.train_step()
+                    logger.info("📊 재구성 오차 계산 시작")
                     recon_errors, flags = self.compute_recon_score(self.batch)
                     for err, flag in zip(recon_errors, flags):
-                        logger.info(f"  📉 Error: {err:.4f} | Macro anomaly: {'❌' if flag else '✅'}")
-                    self.export_onnx()
+                        logger.info(f"  📉 Error: {err:.4f} | Anomaly: {'❌' if flag else '✅'}")
                 except Exception as e:
-                    logger.error(f"❌ Train error: {e}")
+                    logger.error(f"❌ Train error (model={self.model_path}): {e}", exc_info=True)
                 finally:
+                    try:
+                        logger.info(f"🧾 ONNX 내보내기 시작: {self.model_path}")
+                        self.export_onnx()
+                    except Exception as ex:
+                        logger.error(f"❌ ONNX Export 실패: {ex}", exc_info=True)
                     self.batch.clear()
 
 if __name__ == "__main__":

@@ -10,6 +10,13 @@ class TritonClient:
         if not isinstance(features, list):
             raise ValueError("❌ Triton 입력 형식이 올바르지 않습니다.")
         x = np.array(features, dtype=np.float32)
+
+        if x.ndim == 3 and x.shape[1] > 100:
+            x = x[:, -100:, :]  # 마지막 100개만 자르기
+        elif x.ndim == 2 and x.shape[0] > 100:
+            x = x[-100:, :]     # 2D일 경우도 고려
+            x = np.expand_dims(x, axis=0)
+
         if x.ndim == 2:
             x = np.expand_dims(x, axis=0)  # [1, seq_len, dim]
         return x

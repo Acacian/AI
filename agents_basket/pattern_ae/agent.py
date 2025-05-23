@@ -68,6 +68,7 @@ class PatternAEAgent:
     def run_offline(self, data_dir="data"):
         logger.info("📂 오프라인 학습 시작")
         files = sorted(glob.glob(os.path.join(data_dir, "*/*.parquet")))
+
         for file_path in files:
             try:
                 df = pl.read_parquet(file_path)
@@ -86,7 +87,13 @@ class PatternAEAgent:
             self.train_step()
             self.batch.clear()
 
-        self.export_onnx()
+        try:
+            logger.info(f"🧾 ONNX 내보내기 시작: {self.model_path}")
+            self.export_onnx()
+            logger.info(f"✅ ONNX 내보내기 완료")
+        except Exception as e:
+            logger.error(f"❌ ONNX 내보내기 실패 (model_path={self.model_path}): {e}", exc_info=True)
+
         logger.info("✅ 오프라인 학습 완료")
 
     def should_pretrain(self):

@@ -1,15 +1,52 @@
 import json
 import yaml
 import requests
+import numpy as np
 from kafka import KafkaConsumer, KafkaProducer
-from triton.triton_client import TritonClient
+import tritonclient.http as httpclient
+
+# TritonClient 클래스
+class TritonClient:
+    def __init__(self, url: str = "triton:8000"):
+        self.client = httpclient.InferenceServerClient(url=url)
+
+    def preprocess(self, data: dict) -> np.ndarray:
+        features = data.get("input")
+        if not isinstance(features, list):
+            raise ValueError("❌ Triton 입력 형식이 올바르지 않습니다.")
+        x = np.array(features, dtype=np.float32)
+        if x.ndim == 2:
+            x = np.expand_dims(x, axis=0)  # [1, seq_len, dim]
+        return x
+
+    def postprocess(self, output: np.ndarray) -> list:
+        return output.tolist()
+
+    def infer(self, model_name: str, data: dict) -> list:
+        x = self.preprocess(data)
+        inputs = [httpclient.InferInput("INPUT", x.shape, "FP32")]
+        inputs[0].set_data_from_numpy(x)
+        outputs = [httpclient.InferRequestedOutput("OUTPUT")]
+        result = self.client.infer(model_name, inputs=inputs, outputs=outputs)
+        return self.postprocess(result.as_numpy("OUTPUT"))
+
+    def infer_signal(self, data: dict, models: list[str]) -> dict:
+        signal = {}
+        for model_name in models:
+            try:
+                output = self.infer(model_name, data)
+                if isinstance(output, list) and len(output) == 1 and isinstance(output[0], list):
+                    signal[model_name] = output[0]
+                else:
+                    signal[model_name] = output
+            except Exception as e:
+                print(f"❌ 모델 '{model_name}' 추론 실패: {e}")
+                signal[model_name] = None
+        return signal
 
 # 설정 로딩
 with open("agents_llm/config.yaml", "r") as f:
     config = yaml.safe_load(f)
-
-# Triton client 초기화
-triton = TritonClient()
 
 # Kafka 설정
 consumer = KafkaConsumer(
@@ -52,6 +89,8 @@ def query_llm(prompt: str) -> str:
 # 메인 루프
 def run():
     print(f"🧠 LLM Agent 시작: topic={config['listen_topic']}", flush=True)
+    triton = TritonClient()
+
     for msg in consumer:
         try:
             data = msg.value
@@ -59,7 +98,6 @@ def run():
                 print(f"⚠️ 'input' 필드 누락됨: {data}", flush=True)
                 continue
 
-            # signal feature 기반 추론
             models = ["pattern_ae", "risk_scorer", "volume_ae", "trend_segmenter", "volatility_watcher"]
             signal = triton.infer_signal(data, models)
             prompt = build_prompt(signal)
