@@ -1,5 +1,5 @@
 topic: macro_training_gc_f_1d
-model_path: /models/macro_filter_gold/1/model.onnx
+model_path: /models/macro_filter_gold
 learning_rate: 0.001
 input_dim: 5
 sequence_length: 100

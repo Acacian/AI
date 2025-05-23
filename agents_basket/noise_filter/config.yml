@@ -1,4 +1,4 @@
-topic: noise_training_btcusdt_1m
+topic: noise_training_btcusdt
 model_path: /models/noise_filter/1/model.onnx
 learning_rate: 0.001
 input_dim: 5
