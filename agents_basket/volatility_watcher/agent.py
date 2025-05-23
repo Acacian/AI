@@ -4,7 +4,6 @@ import json
 import yaml
 import logging
 import duckdb
-from collections import deque
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -25,6 +24,7 @@ logging.basicConfig(
     handlers=[logging.StreamHandler(sys.stdout)]
 )
 logger = logging.getLogger("VolatilityWatcher")
+
 
 class VolatilityWatcherAgent:
     def __init__(self, config_path):
@@ -52,7 +52,7 @@ class VolatilityWatcherAgent:
         self.loss_fn = nn.MSELoss(reduction="none")
         self.batch = []
 
-        logger.info(f"🌪️ Initialized - Topic: {self.topic}")
+        logger.info(f"\U0001F32A️ Initialized - Topic: {self.topic}")
 
     def train_step(self):
         self.model.train()
@@ -62,7 +62,7 @@ class VolatilityWatcherAgent:
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
-        logger.info(f"📉 Training Loss: {loss.item():.6f}")
+        logger.info(f"\U0001F4C9 Training Loss: {loss.item():.6f}")
 
     def compute_recon_score(self, x_batch):
         self.model.eval()
@@ -123,10 +123,7 @@ class VolatilityWatcherAgent:
         self.export_onnx()
         logger.info("✅ 오프라인 학습 완료")
 
-    def run(self):
-        if self.should_pretrain():
-            self.run_offline()
-
+    def run_online(self):
         consumer = KafkaConsumer(
             self.topic,
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
@@ -156,19 +153,18 @@ class VolatilityWatcherAgent:
                 finally:
                     self.batch.clear()
 
+    def run(self):
+        if self.should_pretrain():
+            logger.info("🧠 모델이 없어서 오프라인 학습 먼저 수행")
+            self.run_offline()
+        self.run_online()
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        logger.error("❌ 사용법: python -m agents_basket.volatility_watcher.agent <config_path> [offline]")
+        logger.error("❌ 사용법: python -m agents_basket.volatility_watcher.agent <config_path>")
         sys.exit(1)
 
     config_path = sys.argv[1]
-    is_offline = len(sys.argv) >= 3 and sys.argv[2].lower() == "offline"
-
     agent = VolatilityWatcherAgent(config_path)
-
-    if is_offline:
-        agent.run_offline()
-        logger.info("🛑 오프라인 학습만 수행 후 종료")
-        sys.exit(0)
-
     agent.run()

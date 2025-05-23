@@ -52,9 +52,18 @@ def should_send(interval: str, now: datetime) -> bool:
 
 async def run_ohlcv_loop():
     has_printed_topics = False
+    last_merge_day = datetime.utcnow().date()
+
     while not shutdown_event.is_set():
         start = time.time()
         now = datetime.utcnow()
+
+        if now.date() != last_merge_day:
+            print(f"🔁 날짜 변경 감지됨. DuckDB 병합 시작... ({last_merge_day} → {now.date()})")
+            for interval in INTERVALS:
+                merge_parquet_dir(interval)
+            last_merge_day = now.date()
+            print(f"✅ DuckDB 병합 완료: {now.date()} 기준")
 
         for symbol in binance_symbols:
             for interval in intervals:
@@ -78,7 +87,7 @@ async def run_ohlcv_loop():
                 features = preprocess_ohlcv(raw)
 
                 safe_symbol = kafka_safe_symbol(symbol)
-                for agent, topic_tpl in topics.items():
+                for topic_tpl in topics.values():
                     topic = topic_tpl.format(symbol=safe_symbol)
                     publish(topic, {
                         "symbol": symbol.lower(),
@@ -113,7 +122,7 @@ async def run_ohlcv_loop():
             features = preprocess_ohlcv(raw)
 
             safe_symbol = kafka_safe_symbol(symbol)
-            for agent, topic_tpl in topics.items():
+            for topic_tpl in topics.values():
                 topic = topic_tpl.format(symbol=safe_symbol)
                 publish(topic, {
                     "symbol": symbol.lower(),
@@ -127,12 +136,10 @@ async def run_ohlcv_loop():
         await asyncio.sleep(max(0, 60 - elapsed))
 
 async def main():
-    # Graceful shutdown 설정
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM):
         loop.add_signal_handler(sig, shutdown_event.set)
 
-    # 백필 + DuckDB 병합
     print("🔁 Backfill 시작...")
     for symbol in SYMBOLS:
         for interval in INTERVALS:
@@ -148,7 +155,6 @@ async def main():
         f.write("collector_done")
     print("✅ 백필 + DuckDB 병합 완료: /app/duckdb/.ready 생성됨")
 
-    # 실시간 수집 루프 병렬 실행
     try:
         await asyncio.gather(
             run_ohlcv_loop(),

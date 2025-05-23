@@ -26,6 +26,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("VolumeAE")
 
+
 class VolumeAEAgent:
     def __init__(self, config_path):
         with open(config_path) as f:
@@ -106,7 +107,7 @@ class VolumeAEAgent:
                         if len(data) < self.sequence_length:
                             continue
                         for i in range(len(data) - self.sequence_length + 1):
-                            seq = data[i:i+self.sequence_length].tolist()
+                            seq = data[i:i + self.sequence_length].tolist()
                             self.batch.append(seq)
                             if len(self.batch) >= self.batch_size:
                                 self.train_step()
@@ -123,10 +124,7 @@ class VolumeAEAgent:
         self.export_onnx()
         logger.info("✅ 오프라인 학습 완료")
 
-    def run(self):
-        if self.should_pretrain():
-            self.run_offline()
-
+    def run_online(self):
         consumer = KafkaConsumer(
             self.topic,
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
@@ -156,19 +154,18 @@ class VolumeAEAgent:
                 finally:
                     self.batch.clear()
 
+    def run(self):
+        if self.should_pretrain():
+            logger.info("🧠 모델이 없어서 오프라인 학습 먼저 수행")
+            self.run_offline()
+        self.run_online()
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        logger.error("❌ 사용법: python -m agents_basket.volume_ae.agent <config_path> [offline]")
+        logger.error("❌ 사용법: python -m agents_basket.volume_ae.agent <config_path>")
         sys.exit(1)
 
     config_path = sys.argv[1]
-    is_offline = len(sys.argv) >= 3 and sys.argv[2].lower() == "offline"
-
     agent = VolumeAEAgent(config_path)
-
-    if is_offline:
-        agent.run_offline()
-        logger.info("🛑 오프라인 학습만 수행 후 종료")
-        sys.exit(0)
-
     agent.run()

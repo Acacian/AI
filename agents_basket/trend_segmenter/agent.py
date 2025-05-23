@@ -4,8 +4,6 @@ import json
 import yaml
 import logging
 import duckdb
-from collections import deque
-from datetime import datetime, timedelta
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -85,7 +83,7 @@ class TrendSegmenterAgent:
         return not os.path.exists(self.model_path)
 
     def run_offline(self):
-        logger.info("🦆 DuckDB 기반 오프라인 학습 시작")
+        logger.info("🦆 DuckDB 기본 오프라인 학습 시작")
         for db_file in sorted(os.listdir(DUCKDB_DIR)):
             if not db_file.endswith(".db"):
                 continue
@@ -124,10 +122,7 @@ class TrendSegmenterAgent:
         self.export_onnx()
         logger.info("✅ 오프라인 학습 완료")
 
-    def run(self):
-        if self.should_pretrain():
-            self.run_offline()
-
+    def run_online(self):
         consumer = KafkaConsumer(
             self.topic,
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
@@ -136,7 +131,7 @@ class TrendSegmenterAgent:
             group_id=f"trend_segmenter_group_{os.getpid()}"
         )
 
-        logger.info(f"📡 Kafka consuming from: {self.topic}")
+        logger.info(f"📱 Kafka consuming from: {self.topic}")
 
         for msg in consumer:
             value = msg.value
@@ -163,19 +158,16 @@ class TrendSegmenterAgent:
                     self.batch_x.clear()
                     self.batch_y.clear()
 
+    def run(self):
+        if self.should_pretrain():
+            self.run_offline()
+        self.run_online()
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        logger.error("❌ 사용법: python -m agents_basket.trend_segmenter.agent <config_path> [offline]")
+        logger.error("❌ 사용법: python -m agents_basket.trend_segmenter.agent <config_path>")
         sys.exit(1)
 
     config_path = sys.argv[1]
-    is_offline = len(sys.argv) >= 3 and sys.argv[2].lower() == "offline"
-
     agent = TrendSegmenterAgent(config_path)
-
-    if is_offline:
-        agent.run_offline()
-        logger.info("🏁 오프라인 학습 완료 후 종료")
-        sys.exit(0)
-
     agent.run()

@@ -4,8 +4,9 @@ import torch.nn as nn
 import torch.optim as optim
 import polars as pl
 from kafka import KafkaConsumer
-from .model import TransformerAE
 from dotenv import load_dotenv
+from .model import TransformerAE
+from agents_basket.common.base_agent import BaseAgent
 
 load_dotenv()
 
@@ -18,11 +19,11 @@ logging.basicConfig(
     datefmt="%Y-%m-%d %H:%M:%S",
     handlers=[logging.StreamHandler(sys.stdout)]
 )
-logger = logging.getLogger("MacroFilter")
+logger = logging.getLogger("LiquidityChecker")
 
 
-class Agent:
-    def __init__(self, config_path: str):
+class LiquidityCheckerAgent(BaseAgent):
+    def load_config(self, config_path: str):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
 
@@ -35,16 +36,18 @@ class Agent:
         self.d_model = self.config.get("d_model", 64)
         self.threshold = self.config.get("recon_error_threshold", 0.05)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.batch = []
 
+    def init_model(self):
         self.model = TransformerAE(
             input_dim=self.input_dim,
             sequence_length=self.sequence_length,
             d_model=self.d_model
         ).to(self.device)
 
+    def init_optimizer(self):
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
         self.loss_fn = nn.MSELoss(reduction="none")
-        self.batch = []
 
     def train_step(self):
         self.model.train()
@@ -54,7 +57,7 @@ class Agent:
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
-        logger.info(f"📈 Macro AE Loss: {loss.item():.6f}")
+        logger.info(f"📈 Liquidity AE Loss: {loss.item():.6f}")
 
     def compute_recon_score(self, x_batch):
         self.model.eval()
@@ -78,11 +81,11 @@ class Agent:
         )
         logger.info(f"✅ ONNX Exported: {path}")
 
-    def run_offline(self, duckdb_dir="duckdb"):
+    def run_offline(self):
         logger.info("🦆 DuckDB 기반 오프라인 학습 시작")
         intervals = self.config.get("intervals", ["1d"])
         for interval in intervals:
-            db_path = os.path.join(duckdb_dir, f"merged_{interval}.db")
+            db_path = os.path.join("duckdb", f"merged_{interval}.db")
             if not os.path.exists(db_path):
                 logger.warning(f"⚠️ DB 없음: {db_path} → 스킵됨")
                 continue
@@ -113,22 +116,15 @@ class Agent:
                 con.close()
         logger.info("✅ 오프라인 학습 완료")
 
-    def should_pretrain(self):
-        return True
-
-    def run(self):
-        if self.should_pretrain():
-            logger.info("🧠 모델 파일이 없어 오프라인 학습을 먼저 수행합니다.")
-            self.run_offline()
-
+    def run_online(self):
         consumer = KafkaConsumer(
             self.topic,
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
             value_deserializer=lambda v: json.loads(v.decode("utf-8")),
             auto_offset_reset="latest",
-            group_id="macro_filter_group"
+            group_id="liquidity_checker_group"
         )
-        logger.info(f"📡 MacroFilter consuming from: {self.topic}")
+        logger.info(f"📡 LiquidityChecker consuming from: {self.topic}")
 
         for msg in consumer:
             value = msg.value
@@ -143,7 +139,7 @@ class Agent:
                     self.train_step()
                     recon_errors, flags = self.compute_recon_score(self.batch)
                     for err, flag in zip(recon_errors, flags):
-                        logger.info(f"  🔎 Error: {err:.4f} | Macro anomaly: {'❌' if flag else '✅'}")
+                        logger.info(f"  🔎 Error: {err:.4f} | Liquidity anomaly: {'❌' if flag else '✅'}")
                     self.export_onnx(symbol=symbol, interval="stream")
                 except Exception as e:
                     logger.error(f"❌ Train error: {e}")
@@ -153,17 +149,9 @@ class Agent:
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        logger.error("❌ 사용법: python -m agents_basket.macro_filter.agent <config_path> [offline]")
+        logger.error("❌ 사용법: python -m agents_basket.liquidity_checker.agent <config_path>")
         sys.exit(1)
 
     config_path = sys.argv[1]
-    is_offline_mode = len(sys.argv) >= 3 and sys.argv[2].lower() == "offline"
-
-    agent = Agent(config_path)
-
-    if is_offline_mode:
-        agent.run_offline()
-        logger.info("🚀 초기 오프라인 학습만 실행 후 종료합니다.")
-        sys.exit(0)
-    else:
-        agent.run()
+    agent = LiquidityCheckerAgent(config_path)
+    agent.run()
