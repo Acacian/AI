@@ -1,22 +1,43 @@
 topics:
+  # OHLCV 기반 에이전트
   liquidity_training_btcusdt: liquidity_checker
   trend_training_btcusdt: trend_segmenter
   noise_training_btcusdt: noise_filter
   risk_training_btcusdt: risk_scorer
   pattern_training_btcusdt: pattern_ae
   volume_training_btcusdt: volume_ae
+
+  # Macro
   macro_training___tnx_1d: macro_filter_tnx
   macro_training___gspc_1d: macro_filter_gspc
   macro_training_gc_f_1d: macro_filter_gold
+
+  # Orderbook 기반 추가
+  orderbook_training_btcusdt: orderbook_agent
+  orderbook_training_ethusdt: orderbook_agent
+  orderbook_training_solusdt: orderbook_agent
+
+  # 기타
   overheat_training_btcusdt: overheat_detector
   volatility_training_btcusdt: volatility_watcher
 
 routing:
+  # OHLCV 흐름
   liquidity_training_btcusdt: risk_training_btcusdt
   trend_training_btcusdt: risk_training_btcusdt
   noise_training_btcusdt: risk_training_btcusdt
+
+  # Macro 흐름
   macro_training___tnx_1d: risk_training_btcusdt
   macro_training___gspc_1d: risk_training_btcusdt
   macro_training_gc_f_1d: risk_training_btcusdt
-  # 위 모든 결과를 모아 전송
+
+  # Orderbook 흐름
+  orderbook_training_btcusdt: liquidity_training_btcusdt
+  orderbook_training_ethusdt: liquidity_training_ethusdt
+  orderbook_training_solusdt: liquidity_training_solusdt
+
+  # Risk → 최종 중계
   risk_training_btcusdt: ai_intermediate_outputs
+  risk_training_ethusdt: ai_intermediate_outputs
+  risk_training_solusdt: ai_intermediate_outputs

@@ -4,6 +4,7 @@ import json
 import signal
 import websockets
 import duckdb
+import time
 import polars as pl
 from datetime import datetime
 from publisher import publish
@@ -71,7 +72,7 @@ async def handle_symbol(symbol: str):
 
                         payload = {
                             "symbol": symbol.upper(),
-                            "timestamp": data["E"],
+                            "timestamp": data.get("E", int(time.time() * 1000)), 
                             "bids": [[float(p), float(q)] for p, q in data.get("bids", [])],
                             "asks": [[float(p), float(q)] for p, q in data.get("asks", [])],
                         }

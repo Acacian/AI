@@ -3,6 +3,9 @@ fastapi
 uvicorn[standard]
 requests
 
+# 비동기
+asyncio
+
 # Kafka 통신
 kafka-python
 pyyaml

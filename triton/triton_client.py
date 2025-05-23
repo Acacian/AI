@@ -1,9 +1,12 @@
 import tritonclient.http as httpclient
 import numpy as np
+import re
 
 class TritonClient:
-    def __init__(self, url: str = "triton:8000"):
+    def __init__(self, url: str = "triton:8000", routing: dict = None, topics: dict = None):
         self.client = httpclient.InferenceServerClient(url=url)
+        self.routing = routing or {}
+        self.topics = topics or {}
 
     def preprocess(self, data: dict) -> np.ndarray:
         features = data.get("input")
@@ -31,21 +34,39 @@ class TritonClient:
             "std": float(np.std(arr))
         }
 
-    def infer(self, model_name: str, data: dict) -> list:
+    def resolve_template(self, template: str, symbol: str) -> str:
+        return template.replace("{symbol}", symbol)
+
+    def resolve_routing(self, current_topic: str) -> str | None:
+        for pattern, target in self.routing.items():
+            regex = pattern.replace("{symbol}", r"(?P<symbol>[a-z0-9_]+)")
+            match = re.fullmatch(regex, current_topic)
+            if match:
+                symbol = match.group("symbol")
+                resolved = target.replace("{symbol}", symbol)
+                return resolved
+        return None
+
+    def get_model_name(self, current_topic: str) -> str | None:
+        for pattern, agent in self.topics.items():
+            regex = pattern.replace("{symbol}", r"(?P<symbol>[a-z0-9_]+)")
+            match = re.fullmatch(regex, current_topic)
+            if match:
+                return agent
+        return None
+
+    def infer_with_routing(self, current_topic: str, data: dict) -> tuple[str, dict]:
+        model_name = self.get_model_name(current_topic)
+        if not model_name:
+            raise ValueError(f"❌ 토픽에 해당하는 모델 없음: {current_topic}")
+
         x = self.preprocess(data)
         inputs = [httpclient.InferInput("INPUT", x.shape, "FP32")]
         inputs[0].set_data_from_numpy(x)
         outputs = [httpclient.InferRequestedOutput("OUTPUT")]
         result = self.client.infer(model_name, inputs=inputs, outputs=outputs)
-        return self.postprocess(result.as_numpy("OUTPUT"))
+        output = self.postprocess(result.as_numpy("OUTPUT"))
+        summary = self.summarize_output(output)
 
-    def infer_signal(self, data: dict, models: list[str]) -> dict:
-        signal = {}
-        for model_name in models:
-            try:
-                output = self.infer(model_name, data)
-                signal[model_name] = self.summarize_output(output)
-            except Exception as e:
-                print(f"❌ 모델 '{model_name}' 추론 실패: {e}")
-                signal[model_name] = None
-        return signal
+        next_topic = self.resolve_routing(current_topic)
+        return next_topic, summary

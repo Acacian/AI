@@ -48,8 +48,9 @@ LLM은 이를 토대로 의사결정을 진행하며 MPC Agents에서 비율, �
 멀티 AI 통신 : Redis, Kafka  
 전략 조율 : LLM(LLAMA)  
 추론 : triton(Agents에서 만든 ONNX 파일을 Polling 해서 사용)  
-학습 : torch
-데이터베이스 : DuckDB, Parquet(배포 예정 없음)
+학습 : torch(GPU)  
+데이터베이스 : DuckDB, Parquet(배포 예정이 없어서 사용 결정)  
+운영세팅 : graceful shutdown(안전장치)
 
 ## Architecture
 
