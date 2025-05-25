@@ -105,7 +105,7 @@ class VolumeAEAgent(BaseAgent):
             if not db_file.endswith(".db"):
                 continue
             db_path = os.path.join(DUCKDB_DIR, db_file)
-            con = duckdb.connect(db_path)
+            con = duckdb.connect(db_path, read_only=True)
             try:
                 tables = con.execute("SHOW TABLES").fetchall()
                 for (table_name,) in tables:

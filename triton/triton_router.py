@@ -29,7 +29,14 @@ def get_kafka_consumer(topics):
     )
 
 def is_valid_data(data: dict) -> bool:
-    return "input" in data and isinstance(data["input"], list)
+    return (
+        ("input" in data and isinstance(data["input"], list)) or
+        ("bids" in data and "asks" in data)
+    )
+
+def flatten_orderbook(bids, asks):
+    def flatten(side): return [float(v) for pair in side[:20] for v in pair]
+    return flatten(bids) + flatten(asks)
 
 def consume_loop():
     topics = list(topic_model_map.keys())
@@ -50,7 +57,13 @@ def consume_loop():
             continue
 
         try:
-            result = triton.infer(model_name, data)
+            # "bids/asks"인 경우 → input 변환
+            if "bids" in data and "asks" in data:
+                input_data = {"input": [flatten_orderbook(data["bids"], data["asks"])]}
+            else:
+                input_data = data
+
+            result = triton.infer(model_name, input_data)
             print(f"✅ [{topic}] → {model_name} 결과: {result}")
 
             next_topic = next_topic_map.get(topic)

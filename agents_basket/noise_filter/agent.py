@@ -108,7 +108,7 @@ class NoiseFilterAgent(BaseAgent):
                 continue
 
             logger.info(f"📂 {interval} 학습 시작 ({db_path})")
-            con = duckdb.connect(db_path)
+            con = duckdb.connect(db_path, read_only=True)
             try:
                 tables = con.execute("SHOW TABLES").fetchall()
                 for (table_name,) in tables:

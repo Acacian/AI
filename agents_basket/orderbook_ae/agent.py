@@ -76,7 +76,7 @@ class OrderbookAgent(BaseAgent):
         logger.info(f"📦 모델 로드 완료: {self.model_path}")
 
     def flatten_orderbook(self, bids, asks):
-        def flatten(side): return [v for pair in side[:20] for v in pair]
+        def flatten(side): return [float(v) for pair in side[:20] for v in pair]
         return flatten(bids) + flatten(asks)
 
     def train_step(self):
@@ -119,7 +119,7 @@ class OrderbookAgent(BaseAgent):
             if not db_file.endswith(".db"):
                 continue
             db_path = os.path.join(DUCKDB_DIR, db_file)
-            con = duckdb.connect(db_path)
+            con = duckdb.connect(db_path, read_only=True)
             try:
                 tables = con.execute("SHOW TABLES").fetchall()
                 for (table_name,) in tables:

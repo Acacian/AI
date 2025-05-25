@@ -1,10 +1,14 @@
 import tritonclient.http as httpclient
 import numpy as np
 import re
+import threading
 
 class TritonClient:
+    _lock = threading.Lock()  
+
     def __init__(self, url: str = "triton:8000", routing: dict = None, topics: dict = None):
-        self.client = httpclient.InferenceServerClient(url=url)
+        with self._lock:
+            self.client = httpclient.InferenceServerClient(url=url)
         self.routing = routing or {}
         self.topics = topics or {}
 
@@ -60,13 +64,23 @@ class TritonClient:
         if not model_name:
             raise ValueError(f"❌ 토픽에 해당하는 모델 없음: {current_topic}")
 
-        x = self.preprocess(data)
-        inputs = [httpclient.InferInput("INPUT", x.shape, "FP32")]
-        inputs[0].set_data_from_numpy(x)
-        outputs = [httpclient.InferRequestedOutput("OUTPUT")]
-        result = self.client.infer(model_name, inputs=inputs, outputs=outputs)
-        output = self.postprocess(result.as_numpy("OUTPUT"))
-        summary = self.summarize_output(output)
+        with self._lock:
+            x = self.preprocess(data)
+            inputs = [httpclient.InferInput("INPUT", x.shape, "FP32")]
+            inputs[0].set_data_from_numpy(x)
+            outputs = [httpclient.InferRequestedOutput("OUTPUT")]
+            result = self.client.infer(model_name, inputs=inputs, outputs=outputs)
+            output = self.postprocess(result.as_numpy("OUTPUT"))
+            summary = self.summarize_output(output)
 
         next_topic = self.resolve_routing(current_topic)
         return next_topic, summary
+
+    def infer(self, model_name: str, data: dict) -> list:
+        with self._lock:
+            x = self.preprocess(data)
+            inputs = [httpclient.InferInput("INPUT", x.shape, "FP32")]
+            inputs[0].set_data_from_numpy(x)
+            outputs = [httpclient.InferRequestedOutput("OUTPUT")]
+            result = self.client.infer(model_name, inputs=inputs, outputs=outputs)
+            return self.postprocess(result.as_numpy("OUTPUT"))
