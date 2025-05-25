@@ -13,9 +13,9 @@ topics:
   macro_training_gc_f_1d: macro_filter_gold
 
   # Orderbook 기반 추가
-  orderbook_training_btcusdt: orderbook_agent
-  orderbook_training_ethusdt: orderbook_agent
-  orderbook_training_solusdt: orderbook_agent
+  orderbook_training_btcusdt: orderbook_agent_btc
+  orderbook_training_ethusdt: orderbook_agent_eth
+  orderbook_training_solusdt: orderbook_agent_sol
 
   # 기타
   overheat_training_btcusdt: overheat_detector

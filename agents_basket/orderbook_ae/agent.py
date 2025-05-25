@@ -1,17 +1,13 @@
-import os
-import sys
-import json
-import yaml
-import logging
-import duckdb
+import os, sys, json, yaml, logging, duckdb
 from collections import deque
 from datetime import datetime, timedelta
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from kafka import KafkaConsumer
+from kafka import KafkaConsumer, KafkaProducer
 from dotenv import load_dotenv
 from .model import TransformerAE
+from agents_basket.common.base_agent import BaseAgent
 
 load_dotenv()
 
@@ -27,13 +23,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("OrderbookAgent")
 
-class OrderbookAgent:
-    def __init__(self, config_path: str):
+
+class OrderbookAgent(BaseAgent):
+    def load_config(self, config_path: str):
         with open(config_path, 'r') as f:
             self.config = yaml.safe_load(f)
 
         self.topic = self.config["topic"]
-        self.model_path = self.config["model_path"]
+        self.output_topic = self.config.get("output_topic", "orderbook_infer_input")
+        self.model_base_path = self.config["model_path"]
         self.batch_size = 1 if mode == "test" else self.config.get("batch_size", 32)
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
@@ -42,23 +40,43 @@ class OrderbookAgent:
         self.threshold = self.config.get("recon_error_threshold", 0.05)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.batch = []
+        self.sequence_buffer = deque(maxlen=self.sequence_length)
+        self.producer = KafkaProducer(
+            bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
+            value_serializer=lambda v: json.dumps(v).encode("utf-8")
+        )
 
+    def init_model(self):
         self.model = TransformerAE(
             input_dim=self.input_dim,
             sequence_length=self.sequence_length,
             d_model=self.d_model
         ).to(self.device)
 
+    def init_optimizer(self):
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
         self.loss_fn = nn.MSELoss(reduction="none")
-        self.batch = []
-        self.sequence_buffer = deque(maxlen=self.sequence_length)
 
-        logger.info(f"🚀 Initialized with topic: {self.topic}")
+    @property
+    def model_path(self) -> str:
+        return os.path.join(self.model_base_path, "stream", "model.pth")
+
+    def save_model(self):
+        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+        torch.save(self.model.state_dict(), self.model_path)
+        logger.info(f"💾 모델 저장 완료: {self.model_path}")
+
+    def load_model(self):
+        if not os.path.exists(self.model_path):
+            logger.warning(f"📂 모델 파일 없음: {self.model_path}")
+            return
+        self.model.load_state_dict(torch.load(self.model_path, map_location=self.device))
+        self.model.eval()
+        logger.info(f"📦 모델 로드 완료: {self.model_path}")
 
     def flatten_orderbook(self, bids, asks):
-        def flatten(side):
-            return [v for pair in side[:20] for v in pair]
+        def flatten(side): return [v for pair in side[:20] for v in pair]
         return flatten(bids) + flatten(asks)
 
     def train_step(self):
@@ -107,7 +125,8 @@ class OrderbookAgent:
                 for (table_name,) in tables:
                     try:
                         df = con.execute(f"SELECT bids, asks FROM {table_name}").fetchdf()
-                        data = [self.flatten_orderbook(json.loads(b), json.loads(a)) for b, a in zip(df["bids"], df["asks"])]
+                        data = [self.flatten_orderbook(json.loads(b), json.loads(a))
+                                for b, a in zip(df["bids"], df["asks"])]
                         for i in range(len(data) - self.sequence_length + 1):
                             seq = data[i:i+self.sequence_length]
                             if all(len(row) == self.input_dim for row in seq):
@@ -125,13 +144,7 @@ class OrderbookAgent:
         self.export_onnx()
         logger.info("✅ 오프라인 학습 완료")
 
-    def should_pretrain(self):
-        return not os.path.exists(self.model_path)
-
-    def run(self):
-        if self.should_pretrain():
-            self.run_offline()
-
+    def run_online(self):
         consumer = KafkaConsumer(
             self.topic,
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
@@ -158,31 +171,27 @@ class OrderbookAgent:
             if len(self.sequence_buffer) == self.sequence_length:
                 self.batch.append(list(self.sequence_buffer))
 
-            if len(self.batch) >= self.batch_size:
                 try:
                     self.train_step()
                     errors, flags = self.compute_recon_score(self.batch)
                     for err, flag in zip(errors, flags):
                         logger.info(f"  ⚠️ Recon Error: {err:.4f} | Anomaly: {'❌' if flag else '✅'}")
+
+                    self.producer.send(self.output_topic, {"input": list(self.sequence_buffer)})
+                    logger.info(f"📤 Triton 전송 완료 → {self.output_topic}")
+
                     self.export_onnx()
                 except Exception as e:
                     logger.error(f"❌ 학습 중 오류: {e}")
                 finally:
                     self.batch.clear()
 
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        logger.error("❌ 사용법: python -m agents_basket.orderbook.agent <config_path> [offline]")
+        logger.error("❌ 사용법: python -m agents_basket.orderbook.agent <config_path>")
         sys.exit(1)
 
     config_path = sys.argv[1]
-    is_offline_mode = len(sys.argv) >= 3 and sys.argv[2].lower() == "offline"
-
     agent = OrderbookAgent(config_path)
-
-    if is_offline_mode:
-        agent.run_offline()
-        logger.info("🚀 오프라인 학습만 수행하고 종료합니다.")
-        sys.exit(0)
-    else:
-        agent.run()
+    agent.run()

@@ -49,6 +49,23 @@ class LiquidityCheckerAgent(BaseAgent):
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
         self.loss_fn = nn.MSELoss(reduction="none")
 
+    @property
+    def model_path(self) -> str:
+        return os.path.join(self.model_base_path, "stream", "model.pth")
+
+    def save_model(self):
+        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+        torch.save(self.model.state_dict(), self.model_path)
+        logger.info(f"💾 모델 저장 완료: {self.model_path}")
+
+    def load_model(self):
+        if not os.path.exists(self.model_path):
+            logger.warning(f"📂 모델 파일 없음: {self.model_path}")
+            return
+        self.model.load_state_dict(torch.load(self.model_path, map_location=self.device))
+        self.model.eval()
+        logger.info(f"📦 모델 로드 완료: {self.model_path}")
+
     def train_step(self):
         self.model.train()
         x = torch.tensor(self.batch, dtype=torch.float32).to(self.device)

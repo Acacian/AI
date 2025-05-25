@@ -1,17 +1,13 @@
-import os
-import sys
-import json
-import yaml
-import logging
-import duckdb
-from collections import deque
-from datetime import datetime, timedelta
+import os, sys, json, yaml, logging, duckdb
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import polars as pl
 from kafka import KafkaConsumer
 from dotenv import load_dotenv
+from collections import deque
 from .model import TransformerAE
+from agents_basket.common.base_agent import BaseAgent
 
 load_dotenv()
 
@@ -27,13 +23,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("OverheatDetector")
 
-class OverheatDetectorAgent:
-    def __init__(self, config_path: str):
+
+class OverheatDetectorAgent(BaseAgent):
+    def load_config(self, config_path: str):
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
 
         self.topic = self.config["topic"]
-        self.model_path = self.config["model_path"]
+        self.model_base_path = self.config["model_path"]
         self.batch_size = 1 if mode == "test" else self.config.get("batch_size", 32)
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
@@ -42,18 +39,35 @@ class OverheatDetectorAgent:
         self.threshold = self.config.get("recon_error_threshold", 0.05)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.batch = []
 
+    def init_model(self):
         self.model = TransformerAE(
             input_dim=self.input_dim,
             sequence_length=self.sequence_length,
             d_model=self.d_model
         ).to(self.device)
 
+    def init_optimizer(self):
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
         self.loss_fn = nn.MSELoss(reduction="none")
-        self.batch = []
 
-        logger.info(f"🚨 Initialized - Topic: {self.topic}")
+    @property
+    def model_path(self) -> str:
+        return os.path.join(self.model_base_path, "stream", "model.pth")
+
+    def save_model(self):
+        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+        torch.save(self.model.state_dict(), self.model_path)
+        logger.info(f"💾 모델 저장 완료: {self.model_path}")
+
+    def load_model(self):
+        if not os.path.exists(self.model_path):
+            logger.warning(f"📂 모델 파일 없음: {self.model_path}")
+            return
+        self.model.load_state_dict(torch.load(self.model_path, map_location=self.device))
+        self.model.eval()
+        logger.info(f"📦 모델 로드 완료: {self.model_path}")
 
     def train_step(self):
         self.model.train()
@@ -120,13 +134,7 @@ class OverheatDetectorAgent:
         self.export_onnx()
         logger.info("✅ 오프라인 학습 완료")
 
-    def should_pretrain(self):
-        return not os.path.exists(self.model_path)
-
-    def run(self):
-        if self.should_pretrain():
-            self.run_offline()
-
+    def run_online(self):
         consumer = KafkaConsumer(
             self.topic,
             bootstrap_servers=os.getenv("KAFKA_BROKER", "kafka:9092"),
@@ -157,19 +165,12 @@ class OverheatDetectorAgent:
                 finally:
                     self.batch.clear()
 
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        logger.error("❌ 사용법: python -m agents_basket.overheat_detector.agent <config_path> [offline]")
+        logger.error("❌ 사용법: python -m agents_basket.overheat_detector.agent <config_path>")
         sys.exit(1)
 
     config_path = sys.argv[1]
-    is_offline = len(sys.argv) >= 3 and sys.argv[2].lower() == "offline"
-
     agent = OverheatDetectorAgent(config_path)
-
-    if is_offline:
-        agent.run_offline()
-        logger.info("🚀 오프라인 학습 후 종료")
-        sys.exit(0)
-
     agent.run()

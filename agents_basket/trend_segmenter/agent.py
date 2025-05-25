@@ -1,15 +1,11 @@
-import os
-import sys
-import json
-import yaml
-import logging
-import duckdb
+import os, sys, json, yaml, logging, duckdb
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from kafka import KafkaConsumer
 from dotenv import load_dotenv
 from .model import TrendSegmenterTransformer
+from agents_basket.common.base_agent import BaseAgent
 
 load_dotenv()
 
@@ -25,13 +21,14 @@ logging.basicConfig(
 )
 logger = logging.getLogger("TrendSegmenter")
 
-class TrendSegmenterAgent:
-    def __init__(self, config_path):
+
+class TrendSegmenterAgent(BaseAgent):
+    def load_config(self, config_path):
         with open(config_path) as f:
             self.config = yaml.safe_load(f)
 
         self.topic = self.config["topic"]
-        self.model_path = self.config["model_path"]
+        self.model_base_path = self.config["model_path"]
         self.batch_size = 1 if mode == "test" else self.config.get("batch_size", 32)
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
@@ -40,6 +37,9 @@ class TrendSegmenterAgent:
         self.num_classes = self.config.get("num_classes", 3)
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        self.batch_x, self.batch_y = [], []
+
+    def init_model(self):
         self.model = TrendSegmenterTransformer(
             input_dim=self.input_dim,
             sequence_length=self.sequence_length,
@@ -47,43 +47,54 @@ class TrendSegmenterAgent:
             num_classes=self.num_classes
         ).to(self.device)
 
+    def init_optimizer(self):
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
         self.loss_fn = nn.CrossEntropyLoss()
-        self.batch_x, self.batch_y = [], []
 
-        logger.info(f"🧠 Initialized - Topic: {self.topic}")
+    @property
+    def model_path(self) -> str:
+        return os.path.join(self.model_base_path, "stream", "model.pth")
+
+    def save_model(self):
+        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+        torch.save(self.model.state_dict(), self.model_path)
+        logger.info(f"💾 모델 저장 완료: {self.model_path}")
+
+    def load_model(self):
+        if not os.path.exists(self.model_path):
+            logger.warning(f"📂 모델 파일 없음: {self.model_path}")
+            return
+        self.model.load_state_dict(torch.load(self.model_path, map_location=self.device))
+        self.model.eval()
+        logger.info(f"📦 모델 로드 완료: {self.model_path}")
 
     def train_step(self):
         self.model.train()
         x = torch.tensor(self.batch_x, dtype=torch.float32).to(self.device)
         y = torch.tensor(self.batch_y, dtype=torch.long).to(self.device)
-
         logits = self.model(x)
         loss = self.loss_fn(logits, y)
         loss.backward()
         self.optimizer.step()
         self.optimizer.zero_grad()
-
         acc = (logits.argmax(1) == y).float().mean()
         logger.info(f"📊 Train - Loss: {loss.item():.6f} | Accuracy: {acc.item():.4f}")
 
-    def export_onnx(self):
+    def export_onnx(self, symbol: str = "default", interval: str = "stream"):
         self.model.eval()
         dummy_input = torch.randn(1, self.sequence_length, self.input_dim).to(self.device)
-        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
+        path = os.path.join(self.model_base_path, interval, symbol, "model.onnx")
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         torch.onnx.export(
-            self.model, dummy_input, self.model_path,
+            self.model, dummy_input, path,
             input_names=["INPUT"], output_names=["OUTPUT"],
             dynamic_axes={"INPUT": {0: "batch"}, "OUTPUT": {0: "batch"}},
             opset_version=onnx_version
         )
-        logger.info(f"✅ ONNX model exported: {self.model_path}")
-
-    def should_pretrain(self):
-        return not os.path.exists(self.model_path)
+        logger.info(f"✅ ONNX Exported: {path}")
 
     def run_offline(self):
-        logger.info("🦆 DuckDB 기본 오프라인 학습 시작")
+        logger.info("🦆 DuckDB 기반 오프라인 학습 시작")
         for db_file in sorted(os.listdir(DUCKDB_DIR)):
             if not db_file.endswith(".db"):
                 continue
@@ -119,6 +130,7 @@ class TrendSegmenterAgent:
             self.batch_x.clear()
             self.batch_y.clear()
 
+        self.save_model()
         self.export_onnx()
         logger.info("✅ 오프라인 학습 완료")
 
@@ -151,6 +163,7 @@ class TrendSegmenterAgent:
             if len(self.batch_x) >= self.batch_size:
                 try:
                     self.train_step()
+                    self.save_model()
                     self.export_onnx()
                 except Exception as e:
                     logger.error(f"❌ Train error: {e}")
@@ -158,10 +171,6 @@ class TrendSegmenterAgent:
                     self.batch_x.clear()
                     self.batch_y.clear()
 
-    def run(self):
-        if self.should_pretrain():
-            self.run_offline()
-        self.run_online()
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:
