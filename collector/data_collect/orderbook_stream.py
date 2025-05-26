@@ -5,7 +5,7 @@ import signal
 import websockets
 import duckdb
 import time
-import polars as pl
+import numpy as np
 from datetime import datetime
 from publisher import publish
 
@@ -61,6 +61,9 @@ def load_orderbook_from_duckdb(symbol: str, sequence_length: int):
 async def handle_symbol(symbol: str):
     global is_running
     url = f"{BINANCE_WS_URL}/{symbol}@depth{DEPTH_LEVEL}@100ms"
+    recent_values = []  # 최근 데이터 누적 for z-score
+    max_cache = 200
+
     while is_running:
         try:
             async with websockets.connect(url, ping_interval=20, ping_timeout=10) as ws:
@@ -70,11 +73,27 @@ async def handle_symbol(symbol: str):
                         msg = await asyncio.wait_for(ws.recv(), timeout=15)
                         data = json.loads(msg)
 
+                        bids = [[float(p), float(q)] for p, q in data.get("bids", [])][:DEPTH_LEVEL]
+                        asks = [[float(p), float(q)] for p, q in data.get("asks", [])][:DEPTH_LEVEL]
+
+                        flat = [v for p in bids for v in p] + [v for p in asks for v in p]
+
+                        # z-score 계산
+                        recent_values.append(flat)
+                        if len(recent_values) > max_cache:
+                            recent_values.pop(0)
+
+                        arr = np.array(recent_values)
+                        mean = arr.mean(axis=0)
+                        std = arr.std(axis=0) + 1e-8
+                        zscore = ((np.array(flat) - mean) / std).tolist()
+
                         payload = {
                             "symbol": symbol.upper(),
-                            "timestamp": data.get("E", int(time.time() * 1000)), 
-                            "bids": [[float(p), float(q)] for p, q in data.get("bids", [])],
-                            "asks": [[float(p), float(q)] for p, q in data.get("asks", [])],
+                            "timestamp": data.get("E", int(time.time() * 1000)),
+                            "input": zscore,
+                            "bids": bids,
+                            "asks": asks
                         }
 
                         topic = f"orderbook_training_{symbol}"

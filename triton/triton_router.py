@@ -1,3 +1,4 @@
+import os
 import json
 import yaml
 from kafka import KafkaConsumer
@@ -7,6 +8,7 @@ from kafka_utils import send_message
 KAFKA_BROKER = "kafka:9092"
 CONFIG_PATH = "triton/config.yml"
 GROUP_ID = "ai_triton_router_group"
+DONE_DIR = "models" 
 
 # Triton client 인스턴스
 triton = TritonClient()
@@ -34,6 +36,10 @@ def is_valid_data(data: dict) -> bool:
         ("bids" in data and "asks" in data)
     )
 
+def is_model_ready(model_name: str, base_path: str = DONE_DIR) -> bool:
+    done_path = os.path.join(base_path, f"{model_name}.done")
+    return os.path.exists(done_path)
+
 def flatten_orderbook(bids, asks):
     def flatten(side): return [float(v) for pair in side[:20] for v in pair]
     return flatten(bids) + flatten(asks)
@@ -50,6 +56,10 @@ def consume_loop():
         model_name = topic_model_map.get(topic)
         if not model_name:
             print(f"⚠️ 알 수 없는 토픽: {topic}")
+            continue
+
+        if not is_model_ready(model_name):
+            print(f"⏸️ 모델 학습 미완료 (.done 없음): {model_name} → 메시지 무시")
             continue
 
         if not is_valid_data(data):

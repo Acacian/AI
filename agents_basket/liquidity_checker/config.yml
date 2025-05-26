@@ -1,6 +1,0 @@
-topic: liquidity_training_btcusdt
-model_path: /models/liquidity_checker
-learning_rate: 0.001
-input_dim: 5
-sequence_length: 100
-d_model: 64

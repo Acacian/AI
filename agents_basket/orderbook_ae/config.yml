@@ -1,8 +1,0 @@
-topic: orderbook_training_btcusdt
-output_topic: orderbook_infer_input
-model_path: /models/orderbook_agent
-learning_rate: 0.001
-input_dim: 40
-sequence_length: 100
-d_model: 64
-recon_error_threshold: 0.05

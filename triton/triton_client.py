@@ -1,6 +1,6 @@
 import tritonclient.http as httpclient
 import numpy as np
-import re
+import re, os
 import threading
 
 class TritonClient:
@@ -59,10 +59,17 @@ class TritonClient:
                 return agent
         return None
 
+    def is_model_ready(self, model_name: str, base_path: str = "models") -> bool:
+        done_path = os.path.join(base_path, f"{model_name}.done")
+        return os.path.exists(done_path)
+
     def infer_with_routing(self, current_topic: str, data: dict) -> tuple[str, dict]:
         model_name = self.get_model_name(current_topic)
         if not model_name:
             raise ValueError(f"❌ 토픽에 해당하는 모델 없음: {current_topic}")
+        if not self.is_model_ready(model_name):
+            raise RuntimeError(f"⏸️ 모델 미완성 (.done 없음): {model_name}")
+
 
         with self._lock:
             x = self.preprocess(data)
@@ -77,6 +84,9 @@ class TritonClient:
         return next_topic, summary
 
     def infer(self, model_name: str, data: dict) -> list:
+        if not self.is_model_ready(model_name):
+            raise RuntimeError(f"⏸️ 모델 미완성 (.done 없음): {model_name}")
+
         with self._lock:
             x = self.preprocess(data)
             inputs = [httpclient.InferInput("INPUT", x.shape, "FP32")]

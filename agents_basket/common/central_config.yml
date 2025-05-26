@@ -1,0 +1,106 @@
+volume_ae:
+  topic: volume_training_btcusdt
+  model_path: /models/volume_ae
+  input_dim: 5
+  sequence_length: 100
+  d_model: 64
+  learning_rate: 0.001
+  recon_error_threshold: 0.05
+
+volatility_watcher:
+  topic: volatility_training_btcusdt
+  model_path: /models/volatility_watcher
+  input_dim: 5
+  sequence_length: 100
+  d_model: 64
+  learning_rate: 0.001
+  recon_error_threshold: 0.05
+
+overheat_detector:
+  topic: overheat_training_btcusdt
+  model_path: /models/overheat_detector
+  input_dim: 5
+  sequence_length: 100
+  d_model: 64
+  learning_rate: 0.001
+  recon_error_threshold: 0.05
+
+pattern_ae:
+  topic: pattern_training_btcusdt
+  model_path: /models/pattern_ae
+  input_dim: 5
+  sequence_length: 100
+  d_model: 64
+  learning_rate: 0.001
+  recon_error_threshold: 0.05
+
+noise_filter:
+  topic: noise_training_btcusdt
+  model_path: /models/noise_filter
+  input_dim: 5
+  sequence_length: 100
+  hidden_size: 64
+  learning_rate: 0.001
+
+macro_filter_gold:
+  topic: macro_training_gc_f_1d
+  model_path: /models/macro_filter_gold
+  input_dim: 5
+  sequence_length: 100
+  d_model: 64
+  learning_rate: 0.001
+  recon_error_threshold: 0.05
+
+macro_filter_gspc:
+  topic: macro_training___gspc_1d
+  model_path: /models/macro_filter_gspc
+  input_dim: 5
+  sequence_length: 100
+  d_model: 64
+  learning_rate: 0.001
+  recon_error_threshold: 0.05
+
+macro_filter_tnx:
+  topic: macro_training___tnx_1d
+  model_path: /models/macro_filter_tnx
+  input_dim: 5
+  sequence_length: 100
+  d_model: 64
+  learning_rate: 0.001
+  recon_error_threshold: 0.05
+
+liquidity_checker:
+  topic: liquidity_training_btcusdt
+  model_path: /models/liquidity_checker
+  input_dim: 5
+  sequence_length: 100
+  d_model: 64
+  learning_rate: 0.001
+
+orderbook_ae:
+  topic: orderbook_training_btcusdt
+  output_topic: orderbook_infer_input
+  model_path: /models/orderbook_agent
+  input_dim: 40
+  sequence_length: 100
+  d_model: 64
+  learning_rate: 0.001
+  recon_error_threshold: 0.05
+
+risk_scorer:
+  topic: risk_training_btcusdt
+  model_path: /models/risk_scorer
+  input_dim: 5
+  sequence_length: 100
+  hidden_size: 64
+  num_classes: 2
+  learning_rate: 0.001
+
+trend_segmenter:
+  topic: trend_training_btcusdt
+  model_path: /models/trend_segmenter
+  input_dim: 5
+  sequence_length: 100
+  d_model: 64
+  num_classes: 3
+  learning_rate: 0.001
