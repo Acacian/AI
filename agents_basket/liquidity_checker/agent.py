@@ -1,3 +1,4 @@
+import os
 from .model import TransformerAE
 from agents_basket.common.base_agent import BaseAgent
 

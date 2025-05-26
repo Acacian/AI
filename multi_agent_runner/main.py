@@ -1,30 +1,51 @@
-import sys
-import multiprocessing
-from agent_manager import get_all_agent_configs, load_and_run_agent
+import os, sys, yaml, subprocess, multiprocessing
 
-# 🔹 config 검증 및 정렬
-from agents_basket.common.validate_config import validate_and_sort_config
+CONFIG_PATH = "agents_basket/common/central_config.yml"
+BASE_MODULE_PATH = "agents_basket"
 
-CONFIG_PATH = "collector/config.yml"
+def validate_config(path: str):
+    if not os.path.exists(path):
+        raise FileNotFoundError(f"설정 파일이 존재하지 않습니다: {path}")
+    with open(path) as f:
+        yaml.safe_load(f)  # 문법 확인만 간단히 수행
+    print(f"✅ 설정 파일 로딩 성공: {path}", flush=True)
+
+def get_agent_runs(central_config_path: str):
+    with open(central_config_path, "r") as f:
+        config = yaml.safe_load(f)
+
+    return [(name, central_config_path) for name in config.keys()]
+
+def run_agent(agent_name: str, config_path: str):
+    try:
+        module_path = f"{BASE_MODULE_PATH}.{agent_name}.agent"
+        print(f"🧪 [Runner] {agent_name} 실행 시작...", flush=True)
+        subprocess.run(
+            [sys.executable, "-m", module_path, config_path],
+            check=True,
+            stdout=sys.stdout,
+            stderr=sys.stderr
+        )
+    except subprocess.CalledProcessError as e:
+        print(f"❌ [Runner] {agent_name} 실행 실패 | 오류: {e}", flush=True)
+    except Exception as e:
+        print(f"❌ [Runner] {agent_name} 실행 실패 | 오류: {e}", flush=True)
 
 def main():
-    # ✅ 실행 전 config 검증
     try:
-        validate_and_sort_config(CONFIG_PATH)
+        validate_config(CONFIG_PATH)
     except Exception as e:
         print(f"❌ config 검증 실패: {e}", flush=True)
         sys.exit(1)
 
-    # 🔹 에이전트 실행
-    config_paths = get_all_agent_configs()
-    print(f"🚀 실행할 에이전트 개수: {len(config_paths)}", flush=True)
+    agent_runs = get_agent_runs(CONFIG_PATH)
+    print(f"🚀 실행할 에이전트 개수: {len(agent_runs)}", flush=True)
 
     processes = []
-    for config_path in config_paths:
+    for agent_name, config_path in agent_runs:
         p = multiprocessing.Process(
-            target=load_and_run_agent,
-            args=(config_path,),
-            daemon=True
+            target=run_agent,
+            args=(agent_name, config_path)
         )
         p.start()
         processes.append(p)

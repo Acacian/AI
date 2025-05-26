@@ -53,15 +53,18 @@ class BaseAgent(ABC):
             flags = (error > self.threshold).float()
         return error.tolist(), flags.tolist()
 
+    def get_onnx_path(self, symbol: str) -> str:
+        base_symbol = symbol.split("_")[0].lower()
+        model_name = f"{self.model_name_prefix}_{base_symbol}"
+        return os.path.join(self.model_base_path, model_name, "1", "model.onnx")
+
     def export_onnx(self, symbol: str, interval: str = "stream"):
         self.model.eval()
         dummy_input = torch.randn(1, self.sequence_length, self.input_dim).to(self.device)
 
-        base_symbol = symbol.split("_")[0].lower()
-        model_name = f"{self.model_name_prefix}_{base_symbol}"
-        path = os.path.join(self.model_base_path, model_name, "1", "model.onnx")
-
+        path = self.get_onnx_path(symbol)
         os.makedirs(os.path.dirname(path), exist_ok=True)
+
         try:
             torch.onnx.export(
                 self.model, dummy_input, path,
@@ -72,7 +75,7 @@ class BaseAgent(ABC):
             self.log(f"✅ ONNX Exported: {path}")
         except Exception as e:
             self.log(f"❌ ONNX export 실패: {e}")
-
+            
     def run_offline(self, duckdb_dir="duckdb"):
         for interval in self.config.get("intervals", ["1d"]):
             db_path = os.path.join(duckdb_dir, f"merged_{interval}.db")
@@ -184,9 +187,9 @@ class BaseAgent(ABC):
         self.log(f"📦 모델 로드 완료: {self.model_path}")
 
     @property
-    @abstractmethod
-    def model_path(self) -> str: pass
-
+    def model_path(self) -> str:
+        return os.path.join(self.model_base_path, f"{self.model_name_prefix}.pt")
+    
     def run(self):
         if self.should_pretrain():
             self.log("🧠 모델 없음 → 오프라인 학습 시작")
@@ -196,6 +199,9 @@ class BaseAgent(ABC):
             self.log("📦 모델 로딩 시도")
             self.load_model()
         self.run_online()
+
+
+# =============================================================================================
 
 class ClassificationBaseAgent(BaseAgent):
     def __init__(self, config_path: str):

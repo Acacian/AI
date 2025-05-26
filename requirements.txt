@@ -3,29 +3,26 @@ fastapi
 uvicorn[standard]
 requests
 
-# 비동기
-asyncio
-
-# Kafka 통신
+# Kafka & Config
 kafka-python
 pyyaml
 
-# Triton Inference Server 통신
+# Triton Inference Server
 tritonclient[http]
 
-# PyTorch + ONNX (CUDA 12.1 기준)
+# ML/통계 처리
+numpy<2
+polars
+scikit-learn
+onnx
+
+# PyTorch (CUDA 12.1 전용)
+--extra-index-url https://download.pytorch.org/whl/cu121
 torch==2.1.2+cu121
 torchvision==0.16.2+cu121
 torchaudio==2.1.2+cu121
---extra-index-url https://download.pytorch.org/whl/cu121
-onnx
 
-# ML/통계 처리용
-numpy
-polars
-scikit-learn
-
-# 시각화
+# 시각화 / 편의
 tqdm
 
 # 데이터 수집 및 처리
