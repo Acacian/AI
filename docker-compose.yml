@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.collector
-    container_name: binance-collector
+    container_name: data-collector
     depends_on:
       kafka:
         condition: service_healthy

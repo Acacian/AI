@@ -15,6 +15,8 @@ COPY multi_agent_runner/entrypoint.sh /app/entrypoint.sh
 COPY requirements.txt ./
 RUN pip install --upgrade pip \
     && pip install --no-cache-dir -r requirements.txt \
+    # 설치 및 권한 + 자동 __main__ 삽입 실행
+    && python agents_basket/common/automatic_main.py \
     && chmod +x /app/entrypoint.sh
 
 # collector 완료 확인 후 실행

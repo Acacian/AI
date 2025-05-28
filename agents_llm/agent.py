@@ -1,8 +1,10 @@
 import json
 import yaml
+import time
 import requests
 import numpy as np
 from kafka import KafkaConsumer, KafkaProducer
+from kafka.errors import NoBrokersAvailable
 import tritonclient.http as httpclient
 
 # TritonClient 클래스
@@ -48,15 +50,27 @@ class TritonClient:
 with open("agents_llm/config.yaml", "r") as f:
     config = yaml.safe_load(f)
 
-# Kafka 설정
-consumer = KafkaConsumer(
-    config["listen_topic"],
-    bootstrap_servers=config.get("kafka_broker", "kafka:9092"),
-    group_id=config.get("group_id", "llm_agent_group"),
-    value_deserializer=lambda m: json.loads(m.decode("utf-8")),
-    auto_offset_reset="latest",
-)
+# KafkaConsumer 연결
+def init_consumer_with_retry(config: dict, max_retries: int = 10, delay_sec: int = 5):
+    for attempt in range(max_retries):
+        try:
+            consumer = KafkaConsumer(
+                config["listen_topic"],
+                bootstrap_servers=config.get("kafka_broker", "kafka:9092"),
+                group_id=config.get("group_id", "llm_agent_group"),
+                value_deserializer=lambda m: json.loads(m.decode("utf-8")),
+                auto_offset_reset="latest",
+            )
+            print("✅ Kafka 연결 성공")
+            return consumer
+        except NoBrokersAvailable:
+            print(f"🔁 Kafka 연결 재시도 중... ({attempt+1}/{max_retries})")
+            time.sleep(delay_sec)
+    raise RuntimeError("❌ Kafka 연결 실패: No brokers available")
 
+consumer = init_consumer_with_retry(config)
+
+# KafkaProducer 생성
 producer = KafkaProducer(
     bootstrap_servers=config.get("kafka_broker", "kafka:9092"),
     value_serializer=lambda v: json.dumps(v).encode("utf-8"),
@@ -100,7 +114,13 @@ def run():
 
             models = ["pattern_ae", "risk_scorer", "volume_ae", "trend_segmenter", "volatility_watcher"]
             signal = triton.infer_signal(data, models)
-            prompt = build_prompt(signal)
+            prompt = build_prompt({
+                "pattern": signal.get("pattern_ae"),
+                "risk": signal.get("risk_scorer"),
+                "volume": signal.get("volume_ae"),
+                "trend": signal.get("trend_segmenter"),
+                "volatility": signal.get("volatility_watcher"),
+            })
             decision = query_llm(prompt)
             print(f"✅ 전략 결정: {decision}", flush=True)
 

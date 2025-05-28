@@ -17,19 +17,21 @@ def get_agent_runs(central_config_path: str):
     return [(name, central_config_path) for name in config.keys()]
 
 def run_agent(agent_name: str, config_path: str):
+    module_path = f"{BASE_MODULE_PATH}.{agent_name}.agent"
+    print(f"🧪 [Runner] {agent_name} 실행 시작...", flush=True)
+
     try:
-        module_path = f"{BASE_MODULE_PATH}.{agent_name}.agent"
-        print(f"🧪 [Runner] {agent_name} 실행 시작...", flush=True)
-        subprocess.run(
+        result = subprocess.run(
             [sys.executable, "-m", module_path, config_path],
-            check=True,
-            stdout=sys.stdout,
-            stderr=sys.stderr
+            stdout=sys.stdout,  
+            stderr=sys.stderr,
+            text=True
         )
-    except subprocess.CalledProcessError as e:
-        print(f"❌ [Runner] {agent_name} 실행 실패 | 오류: {e}", flush=True)
+        print(f"📤 [Runner] {agent_name} 출력 로그:\n{result.stdout}", flush=True)
+        if result.returncode != 0:
+            print(f"❌ [Runner] {agent_name} 실패 (코드 {result.returncode})", flush=True)
     except Exception as e:
-        print(f"❌ [Runner] {agent_name} 실행 실패 | 오류: {e}", flush=True)
+        print(f"❌ [Runner] {agent_name} 실행 중 예외 발생: {e}", flush=True)
 
 def main():
     try:
