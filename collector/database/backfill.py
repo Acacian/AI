@@ -131,6 +131,8 @@ def backfill(symbol: str, interval: str):
     os.makedirs(data_dir, exist_ok=True)
     key = f"{symbol}_{interval}"
 
+    safe_symbol = kafka_safe_symbol(symbol)
+
     start = datetime.datetime.utcnow() - datetime.timedelta(days=RETENTION_DAYS)
     end = datetime.datetime.utcnow() - datetime.timedelta(days=1)
 
@@ -138,7 +140,8 @@ def backfill(symbol: str, interval: str):
     with tqdm(total=(end - start).days + 1, desc=f"📦 {symbol}-{interval}") as pbar:
         while current <= end:
             date_str = current.strftime("%Y-%m-%d")
-            file_path = os.path.join(data_dir, f"{symbol}_{date_str}.parquet")
+            file_path = os.path.join(data_dir, f"{safe_symbol}_{date_str}.parquet")
+
             if os.path.exists(file_path):
                 pbar.set_postfix_str(f"✅ Skip {date_str}")
             else:
@@ -173,7 +176,7 @@ def backfill(symbol: str, interval: str):
             current += datetime.timedelta(days=1)
             pbar.update(1)
 
-    delete_old_files(data_dir, symbol)
+    delete_old_files(data_dir, safe_symbol)
 
 if __name__ == "__main__":
     for symbol in SYMBOLS:

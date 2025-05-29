@@ -259,10 +259,11 @@ class BaseAgent(ABC):
         return os.path.join(self.model_base_path, model_name, "1", f"{symbol}.pt")
 
     def run(self):
+        symbol = self.extract_symbol()
         if self.should_pretrain():
             self.log("🧠 모델 없음 → 오프라인 학습 시작")
             self.run_offline()
-            self.save_model()
+            self.save_model(symbol)
         else:
             self.log("📦 모델 로딩 시도")
             self.load_model()
