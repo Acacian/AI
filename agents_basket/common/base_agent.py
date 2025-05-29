@@ -11,13 +11,14 @@ from .onetime_logger import one_time_logger
 from kafka import KafkaConsumer
 from .parse_features import get_parser_by_prefix
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
-    handlers=[logging.StreamHandler(sys.stdout)],
-    force=True 
-)
 logger = logging.getLogger("BaseAgent")
+if not logger.handlers:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s | %(name)s | %(levelname)s | %(message)s",
+        handlers=[logging.StreamHandler(sys.stdout)]
+    )
+
 mode = os.getenv("MODE", "prod").lower()
 
 class BaseAgent(ABC):
@@ -65,17 +66,13 @@ class BaseAgent(ABC):
         return error.tolist(), flags.tolist()
 
     def get_onnx_path(self, symbol: str) -> str:
-        symbol = symbol.lower() 
-        if "macro" in self.model_name_prefix:
-            model_name = self.model_name_prefix
-        else:
-            model_name = f"{self.model_name_prefix}_{symbol}"
+        symbol = symbol.lower()
+        model_name = f"{self.model_name_prefix}_{symbol}"  # 항상 평탄화
         return os.path.join(self.model_base_path, model_name, "1", "model.onnx")
 
     def export_onnx(self, symbol: str, interval: str = "stream"):
         self.model.eval()
         dummy_input = torch.randn(1, self.sequence_length, self.input_dim).to(self.device)
-
         path = self.get_onnx_path(symbol)
         os.makedirs(os.path.dirname(path), exist_ok=True)
         self.log(f"📤 ONNX Export 시도 중... → {path}")
@@ -88,18 +85,22 @@ class BaseAgent(ABC):
                 opset_version=self.onnx_version
             )
             self.log(f"✅ ONNX Exported: {path}")
-            done_path = os.path.join(self.model_base_path, f"{self.model_name_prefix}.done")
+
+            # 👉 done 파일도 같은 1/ 폴더 안에 생성
+            done_path = os.path.join(self.model_base_path, f"{self.model_name_prefix}_{symbol}", "1", "done")
             with open(done_path, "w") as f:
                 f.write("done")
             self.log(f"🏁 .done 파일 생성 완료, triton 학습 시작 예정: {done_path}")
+
         except Exception as e:
             self.log(f"❌ ONNX export 실패: {e}")
-            
+
     def run_offline(self, duckdb_dir="duckdb"):
         self.log("🟠 run_offline 진입")
         total_trained = 0
         total_skipped = 0
         total_tables = 0
+        trained_symbols = set()
 
         for interval in self.config.get("intervals", ["1d"]):
             db_path = os.path.join(duckdb_dir, f"merged_{interval}.db")
@@ -112,6 +113,7 @@ class BaseAgent(ABC):
                 tables = con.execute("SHOW TABLES").fetchall()
                 for (table_name,) in tables:
                     total_tables += 1
+
                     try:
                         df = con.execute(f'SELECT open, high, low, close, volume FROM "{table_name}"').df()
                         df = pl.DataFrame(df)
@@ -121,11 +123,12 @@ class BaseAgent(ABC):
                             self.log(f"⏭️ {table_name} 스킵됨: 데이터 부족 ({df.shape[0]} rows)")
                             continue
 
+                        symbol = table_name.replace(f"_{interval}", "")
                         data = df.to_numpy()
                         local_trained = 0
 
                         for i in range(len(data) - self.sequence_length + 1):
-                            self.batch.append(data[i:i+self.sequence_length].tolist())
+                            self.batch.append(data[i:i + self.sequence_length].tolist())
                             if len(self.batch) >= self.batch_size:
                                 self.train_step()
                                 total_trained += len(self.batch)
@@ -133,12 +136,17 @@ class BaseAgent(ABC):
                                 self.batch.clear()
 
                         self.log(f"✅ {table_name} 학습 완료 | 샘플 수: {local_trained}")
-                        self.export_onnx(symbol=table_name, interval=interval)
+                        trained_symbols.add(symbol)
 
                     except Exception as e:
                         self.log(f"⚠️ {table_name} 처리 실패: {e}")
             finally:
                 con.close()
+
+        # export onnx 및 저장은 symbol 단위로
+        for symbol in trained_symbols:
+            self.save_model(symbol)
+            self.export_onnx(symbol=symbol)
 
         self.log(f"📊 Offline 학습 요약: 총 테이블 {total_tables}개 중 {total_trained}건 학습, {total_skipped}건 스킵됨")
 
@@ -173,14 +181,6 @@ class BaseAgent(ABC):
                 finally:
                     self.batch.clear()
 
-        done_path = os.path.join("models", f"{self.model_name_prefix}.done")
-        try:
-            with open(done_path, "w") as f:
-                f.write("done")
-            self.log(f"🏁 .done 파일 생성 완료: {done_path}")
-        except Exception as e:
-            self.log(f"❌ .done 파일 생성 실패: {e}")
-
     def parse_features(self, value: dict) -> list[list[float]]:
         parser = get_parser_by_prefix(self.model_name_prefix)
         return parser(value)
@@ -196,7 +196,6 @@ class BaseAgent(ABC):
         else:
             self.logger.info(f"[{self.__class__.__name__}] {message}")
 
-    # ⚠️ num_classes, hidden_size 같은 분류 모델 전용 필드가 필요한 경우, 해당 agent에서 super().load_config() 호출 후 덧붙여 설정
     def load_config(self, config_path: str):
         import yaml
 
@@ -215,7 +214,7 @@ class BaseAgent(ABC):
             self.input_dim = 1
             self.d_model = 1
             self.learning_rate = 1e-4
-            self.threshold = 0.5 
+            self.threshold = 0.5
         else:
             self.batch_size = self.config.get("batch_size", 32)
             self.sequence_length = self.config.get("sequence_length", 100)
@@ -224,10 +223,12 @@ class BaseAgent(ABC):
             self.learning_rate = self.config.get("learning_rate", 1e-3)
             self.threshold = self.config.get("recon_error_threshold", 0.05)
 
-    def save_model(self):
-        os.makedirs(os.path.dirname(self.model_path), exist_ok=True)
-        torch.save(self.model.state_dict(), self.model_path)
-        self.log(f"💾 모델 저장 완료: {self.model_path}")
+    def save_model(self, symbol: str):
+        model_dir = os.path.join(self.model_base_path, f"{self.model_name_prefix}_{symbol}")
+        os.makedirs(model_dir, exist_ok=True)
+        pt_path = os.path.join(model_dir, f"{symbol}.pt")
+        torch.save(self.model.state_dict(), pt_path)
+        self.log(f"💾 모델 저장 완료: {pt_path}")
 
     def load_model(self):
         if not os.path.exists(self.model_path):
@@ -253,8 +254,10 @@ class BaseAgent(ABC):
 
     @property
     def model_path(self) -> str:
-        return os.path.join(self.model_base_path, f"{self.model_name_prefix}.pt")
-    
+        symbol = self.extract_symbol()
+        model_name = f"{self.model_name_prefix}_{symbol}".lower()
+        return os.path.join(self.model_base_path, model_name, "1", f"{symbol}.pt")
+
     def run(self):
         if self.should_pretrain():
             self.log("🧠 모델 없음 → 오프라인 학습 시작")
@@ -266,7 +269,6 @@ class BaseAgent(ABC):
 
         self.export_onnx_if_needed()
         self.run_online()
-
 
 # =============================================================================================
 

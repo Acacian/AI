@@ -5,9 +5,10 @@ from collector.data_collect.yahoo_rest import fetch_macro_symbol
 from collector.scheduler import Scheduler
 from collector.publisher import publish
 from collector.data_processing.pre_processing import preprocess_ohlcv
-from collector.database.backfill import backfill, SYMBOLS, INTERVALS, MACRO_SYMBOLS
+from collector.database.backfill import backfill, SYMBOLS, INTERVALS, MACRO_SYMBOLS, save_parquet
 from collector.database.duckdb import merge_parquet_dir
 from collector.data_collect.orderbook_stream import main as orderbook_main
+import polars as pl
 
 # Load config
 with open("collector/config.yml") as f:
@@ -86,6 +87,7 @@ async def run_ohlcv_loop():
                 raw = [[k["open"], k["high"], k["low"], k["close"], k["volume"]] for k in klines]
                 features = preprocess_ohlcv(raw)
 
+                # ✅ Kafka publish
                 safe_symbol = kafka_safe_symbol(symbol)
                 for topic_tpl in topics.values():
                     topic = topic_tpl.format(symbol=safe_symbol)
@@ -95,13 +97,35 @@ async def run_ohlcv_loop():
                         "input": features
                     })
 
+                # ✅ Parquet 저장
+                file_date = now.strftime("%Y-%m-%d")
+                data_dir = f"data/{interval}"
+                os.makedirs(data_dir, exist_ok=True)
+                file_path = os.path.join(data_dir, f"{safe_symbol}_{file_date}.parquet")
+
+                rows = [
+                    {
+                        "timestamp": int(k["timestamp"]),
+                        "symbol": k["symbol"].lower(),
+                        "interval": interval,
+                        "open": row[0],
+                        "high": row[1],
+                        "low": row[2],
+                        "close": row[3],
+                        "volume": row[4],
+                    }
+                    for k, row in zip(klines, features)
+                ]
+                df = pl.DataFrame(rows)
+                df.write_parquet(file_path)
+
                 if not has_printed_topics:
                     print(f"📦 Published topics for {symbol}-{interval}:")
                     for topic in [topic_tpl.format(symbol=safe_symbol) for topic_tpl in topics.values()]:
                         print(f"  - {topic}")
                     has_printed_topics = True
 
-                print(f"✅ [BINANCE] {symbol}-{interval} | Published to {len(topics)} agents")
+                print(f"✅ [BINANCE] {symbol}-{interval} | Published + Saved parquet")
 
         for symbol in macro_symbols:
             if shutdown_event.is_set():
@@ -130,7 +154,29 @@ async def run_ohlcv_loop():
                     "input": features
                 })
 
-            print(f"✅ [MACRO] {symbol} | Published to {len(topics)} agents")
+            # ✅ Parquet 저장
+            file_date = now.strftime("%Y-%m-%d")
+            data_dir = f"data/1d"
+            os.makedirs(data_dir, exist_ok=True)
+            file_path = os.path.join(data_dir, f"{safe_symbol}_{file_date}.parquet")
+
+            rows = [
+                {
+                    "timestamp": int(k["timestamp"]),
+                    "symbol": k["symbol"].lower(),
+                    "interval": "1d",
+                    "open": row[0],
+                    "high": row[1],
+                    "low": row[2],
+                    "close": row[3],
+                    "volume": row[4],
+                }
+                for k, row in zip(klines, features)
+            ]
+            df = pl.DataFrame(rows)
+            df.write_parquet(file_path)
+
+            print(f"✅ [MACRO] {symbol} | Published + Saved parquet")
 
         elapsed = time.time() - start
         await asyncio.sleep(max(0, 60 - elapsed))
