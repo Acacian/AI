@@ -1,7 +1,6 @@
 #### Macro ####
 macro_filter_gold:
   topic: macro_training_gold
-  model_path: /models/macro_filter_gold
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -9,7 +8,6 @@ macro_filter_gold:
 
 macro_filter_gspc:
   topic: macro_training_gspc
-  model_path: /models/macro_filter_gspc
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -17,7 +15,6 @@ macro_filter_gspc:
 
 macro_filter_tnx:
   topic: macro_training_tnx
-  model_path: /models/macro_filter_tnx
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -26,7 +23,6 @@ macro_filter_tnx:
 #### Orderbook ####
 orderbook_agent_btc:
   topic: orderbook_training_btcusdt
-  model_path: /models/orderbook_agent_btcusdt
   input_dim: 80
   sequence_length: 100
   d_model: 64
@@ -35,7 +31,6 @@ orderbook_agent_btc:
 #### ETC ####
 volume_ae_btc:
   topic: volume_training_btcusdt
-  model_path: /models/volume_ae_btcusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -44,7 +39,6 @@ volume_ae_btc:
 
 volume_ae_eth:
   topic: volume_training_ethusdt
-  model_path: /models/volume_ae_ethusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -53,7 +47,6 @@ volume_ae_eth:
 
 volume_ae_sol:
   topic: volume_training_solusdt
-  model_path: /models/volume_ae_solusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -62,7 +55,6 @@ volume_ae_sol:
 
 volatility_watcher_btc:
   topic: volatility_training_btcusdt
-  model_path: /models/volatility_watcher_btcusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -71,7 +63,6 @@ volatility_watcher_btc:
 
 volatility_watcher_eth:
   topic: volatility_training_ethusdt
-  model_path: /models/volatility_watcher_ethusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -80,7 +71,6 @@ volatility_watcher_eth:
 
 volatility_watcher_sol:
   topic: volatility_training_solusdt
-  model_path: /models/volatility_watcher_solusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -89,7 +79,6 @@ volatility_watcher_sol:
 
 overheat_detector_btc:
   topic: overheat_training_btcusdt
-  model_path: /models/overheat_detector_btcusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -98,7 +87,6 @@ overheat_detector_btc:
 
 overheat_detector_eth:
   topic: overheat_training_ethusdt
-  model_path: /models/overheat_detector_ethusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -107,7 +95,6 @@ overheat_detector_eth:
 
 overheat_detector_sol:
   topic: overheat_training_solusdt
-  model_path: /models/overheat_detector_solusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -116,7 +103,6 @@ overheat_detector_sol:
 
 pattern_ae_btc:
   topic: pattern_training_btcusdt
-  model_path: /models/pattern_ae_btcusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -125,7 +111,6 @@ pattern_ae_btc:
 
 pattern_ae_eth:
   topic: pattern_training_ethusdt
-  model_path: /models/pattern_ae_ethusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -134,7 +119,6 @@ pattern_ae_eth:
 
 pattern_ae_sol:
   topic: pattern_training_solusdt
-  model_path: /models/pattern_ae_solusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -143,7 +127,6 @@ pattern_ae_sol:
 
 noise_filter_btc:
   topic: noise_training_btcusdt
-  model_path: /models/noise_filter_btcusdt
   input_dim: 5
   sequence_length: 100
   hidden_size: 64
@@ -151,7 +134,6 @@ noise_filter_btc:
 
 noise_filter_eth:
   topic: noise_training_ethusdt
-  model_path: /models/noise_filter_ethusdt
   input_dim: 5
   sequence_length: 100
   hidden_size: 64
@@ -159,7 +141,6 @@ noise_filter_eth:
 
 noise_filter_sol:
   topic: noise_training_solusdt
-  model_path: /models/noise_filter_solusdt
   input_dim: 5
   sequence_length: 100
   hidden_size: 64
@@ -167,7 +148,6 @@ noise_filter_sol:
 
 liquidity_checker_btc:
   topic: liquidity_training_btcusdt
-  model_path: /models/liquidity_checker_btcusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -175,7 +155,6 @@ liquidity_checker_btc:
 
 liquidity_checker_eth:
   topic: liquidity_training_ethusdt
-  model_path: /models/liquidity_checker_ethusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -183,7 +162,6 @@ liquidity_checker_eth:
 
 liquidity_checker_sol:
   topic: liquidity_training_solusdt
-  model_path: /models/liquidity_checker_solusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -191,7 +169,6 @@ liquidity_checker_sol:
 
 risk_scorer_btc:
   topic: risk_training_btcusdt
-  model_path: /models/risk_scorer_btcusdt
   input_dim: 5
   sequence_length: 100
   hidden_size: 64
@@ -200,7 +177,6 @@ risk_scorer_btc:
 
 risk_scorer_eth:
   topic: risk_training_ethusdt
-  model_path: /models/risk_scorer_ethusdt
   input_dim: 5
   sequence_length: 100
   hidden_size: 64
@@ -209,7 +185,6 @@ risk_scorer_eth:
 
 risk_scorer_sol:
   topic: risk_training_solusdt
-  model_path: /models/risk_scorer_solusdt
   input_dim: 5
   sequence_length: 100
   hidden_size: 64
@@ -218,7 +193,6 @@ risk_scorer_sol:
 
 trend_segmenter_btc:
   topic: trend_training_btcusdt
-  model_path: /models/trend_segmenter_btcusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -227,7 +201,6 @@ trend_segmenter_btc:
 
 trend_segmenter_eth:
   topic: trend_training_ethusdt
-  model_path: /models/trend_segmenter_ethusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64
@@ -236,7 +209,6 @@ trend_segmenter_eth:
 
 trend_segmenter_sol:
   topic: trend_training_solusdt
-  model_path: /models/trend_segmenter_solusdt
   input_dim: 5
   sequence_length: 100
   d_model: 64

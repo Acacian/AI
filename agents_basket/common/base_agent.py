@@ -7,7 +7,7 @@ import torch.nn as nn
 import json
 import time
 import polars as pl
-from .onetime_logger import one_time_logger
+from .utils.onetime_logger import one_time_logger
 from kafka import KafkaConsumer
 from .parse_features import get_parser_by_prefix
 
