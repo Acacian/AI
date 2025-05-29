@@ -67,8 +67,8 @@ class BaseAgent(ABC):
 
     def get_onnx_path(self, symbol: str) -> str:
         symbol = symbol.lower()
-        model_name = f"{self.model_name_prefix}_{symbol}"  # 항상 평탄화
-        return os.path.join(self.model_base_path, model_name, "1", "model.onnx")
+        model_dir = os.path.join(self.model_base_path, f"{self.model_name_prefix}_{symbol}", "1")
+        return os.path.join(model_dir, "model.onnx")
 
     def export_onnx(self, symbol: str, interval: str = "stream"):
         self.model.eval()
@@ -86,11 +86,11 @@ class BaseAgent(ABC):
             )
             self.log(f"✅ ONNX Exported: {path}")
 
-            # 👉 done 파일도 같은 1/ 폴더 안에 생성
-            done_path = os.path.join(self.model_base_path, f"{self.model_name_prefix}_{symbol}", "1", "done")
+            # .done 파일 생성
+            done_path = os.path.join(os.path.dirname(path), "done")
             with open(done_path, "w") as f:
                 f.write("done")
-            self.log(f"🏁 .done 파일 생성 완료, triton 학습 시작 예정: {done_path}")
+            self.log(f"🏁 .done 파일 생성 완료: {done_path}")
 
         except Exception as e:
             self.log(f"❌ ONNX export 실패: {e}")
@@ -224,7 +224,7 @@ class BaseAgent(ABC):
             self.threshold = self.config.get("recon_error_threshold", 0.05)
 
     def save_model(self, symbol: str):
-        model_dir = os.path.join(self.model_base_path, f"{self.model_name_prefix}_{symbol}")
+        model_dir = os.path.join(self.model_base_path, f"{self.model_name_prefix}_{symbol}", "1")
         os.makedirs(model_dir, exist_ok=True)
         pt_path = os.path.join(model_dir, f"{symbol}.pt")
         torch.save(self.model.state_dict(), pt_path)
@@ -255,8 +255,8 @@ class BaseAgent(ABC):
     @property
     def model_path(self) -> str:
         symbol = self.extract_symbol()
-        model_name = f"{self.model_name_prefix}_{symbol}".lower()
-        return os.path.join(self.model_base_path, model_name, "1", f"{symbol}.pt")
+        model_dir = os.path.join(self.model_base_path, f"{self.model_name_prefix}_{symbol}", "1")
+        return os.path.join(model_dir, f"{symbol}.pt")
 
     def run(self):
         symbol = self.extract_symbol()
