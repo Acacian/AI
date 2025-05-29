@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import os, sys
+import os, sys, yaml
 import logging
 import torch
 import duckdb
@@ -197,7 +197,6 @@ class BaseAgent(ABC):
             self.logger.info(f"[{self.__class__.__name__}] {message}")
 
     def load_config(self, config_path: str):
-        import yaml
 
         with open(config_path) as f:
             full_config = yaml.safe_load(f)
@@ -207,7 +206,7 @@ class BaseAgent(ABC):
 
         self.config = full_config[self.model_name_prefix]
         self.topic = self.config["topic"]
-        self.model_base_path = self.config["model_path"]
+        self.model_base_path = "/models"
         if mode == "test":
             self.batch_size = 1
             self.sequence_length = 1

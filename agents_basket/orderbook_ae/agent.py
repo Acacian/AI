@@ -22,7 +22,7 @@ class OrderbookAgent(BaseAgent):
         self.config = full_config[self.model_name_prefix]
         self.topic = self.config["topic"]
         self.output_topic = self.config.get("output_topic", "orderbook_infer_input")
-        self.model_base_path = self.config["model_path"]
+        self.model_base_path = "/models"
         self.batch_size = 1 if mode == "test" else self.config.get("batch_size", 32)
         self.learning_rate = self.config.get("learning_rate", 1e-3)
         self.sequence_length = self.config.get("sequence_length", 100)
