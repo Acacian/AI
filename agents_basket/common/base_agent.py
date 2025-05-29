@@ -210,7 +210,7 @@ class BaseAgent(ABC):
         if mode == "test":
             self.batch_size = 1
             self.sequence_length = 1
-            self.input_dim = 1
+            self.input_dim = self.config.get("input_dim", 5)
             self.d_model = 1
             self.learning_rate = 1e-4
             self.threshold = 0.5
@@ -277,7 +277,7 @@ class ClassificationBaseAgent(BaseAgent):
         super().__init__(config_path)
         self.batch_x = []
         self.batch_y = []
-        self.exported = False  # 중복 export 방지 (선택)
+        self.exported = False 
 
     def init_optimizer(self):
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=self.learning_rate)
@@ -288,7 +288,7 @@ class ClassificationBaseAgent(BaseAgent):
             input_dim=self.input_dim,
             sequence_length=self.sequence_length,
             hidden_size=self.d_model,
-            num_classes=self.num_classes
+            num_classes=self.config.get("num_classes", 3)
         ).to(self.device)
 
     def train_step(self):
