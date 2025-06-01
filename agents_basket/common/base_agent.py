@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-import os, sys, yaml
+import os, sys, yaml, re
 import logging
 import torch
 import duckdb
@@ -26,9 +26,13 @@ class BaseAgent(ABC):
     model_class = None
     onnx_version: int = int(os.getenv("Onnx_Version", 17))
 
-    def __init__(self, config_path: str):
+    def __init__(self, config_path: str, config_key: str):
         print(f"🟡 BaseAgent init 시작: {self.__class__.__name__}", flush=True)
-        self.load_config(config_path)
+        try:
+            self.load_config(config_path, config_key)
+        except TypeError:
+            # 일부 Agent들은 config_key를 받지 않음
+            self.load_config(config_path)
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.init_model()
         self.init_optimizer()
@@ -196,17 +200,18 @@ class BaseAgent(ABC):
         else:
             self.logger.info(f"[{self.__class__.__name__}] {message}")
 
-    def load_config(self, config_path: str):
-
+    def load_config(self, config_path: str, config_key: str):
         with open(config_path) as f:
             full_config = yaml.safe_load(f)
 
-        if self.model_name_prefix not in full_config:
-            raise ValueError(f"❌ 설정 파일에 '{self.model_name_prefix}' 키가 없습니다")
+        if config_key not in full_config:
+            raise ValueError(f"❌ 설정 파일에 '{config_key}' 키가 없습니다")
 
-        self.config = full_config[self.model_name_prefix]
+        self.config = full_config[config_key]
         self.topic = self.config["topic"]
         self.model_base_path = "/models"
+
+        # Mode는 전역으로 처리됨, 인자로 안 받음
         if mode == "test":
             self.batch_size = 1
             self.sequence_length = 1
@@ -221,6 +226,9 @@ class BaseAgent(ABC):
             self.d_model = self.config.get("d_model", 64)
             self.learning_rate = self.config.get("learning_rate", 1e-3)
             self.threshold = self.config.get("recon_error_threshold", 0.05)
+
+        # 🔑 symbol
+        self.symbol = self.config.get("symbol") or config_key.replace(f"{self.model_name_prefix}_", "").lower()
 
     def save_model(self, symbol: str):
         model_dir = os.path.join(self.model_base_path, f"{self.model_name_prefix}_{symbol}", "1")
@@ -273,8 +281,8 @@ class BaseAgent(ABC):
 # =============================================================================================
 
 class ClassificationBaseAgent(BaseAgent):
-    def __init__(self, config_path: str):
-        super().__init__(config_path)
+    def __init__(self, config_path, config_key):
+        super().__init__(config_path, config_key)
         self.batch_x = []
         self.batch_y = []
         self.exported = False 
@@ -284,12 +292,19 @@ class ClassificationBaseAgent(BaseAgent):
         self.loss_fn = torch.nn.CrossEntropyLoss()
 
     def init_model(self):
-        self.model = self.model_class(
-            input_dim=self.input_dim,
-            sequence_length=self.sequence_length,
-            hidden_size=self.d_model,
-            num_classes=self.config.get("num_classes", 3)
-        ).to(self.device)
+        if hasattr(self.model_class, "hidden_size"):
+            self.model = self.model_class(
+                input_dim=self.input_dim,
+                sequence_length=self.sequence_length,
+                hidden_size=self.d_model,
+                num_classes=self.config.get("num_classes", 3)
+            ).to(self.device)
+        else:
+            self.model = self.model_class(
+                input_dim=self.input_dim,
+                sequence_length=self.sequence_length,
+                d_model=self.d_model
+            ).to(self.device)
 
     def train_step(self):
         self.model.train()

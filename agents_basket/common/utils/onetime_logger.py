@@ -23,4 +23,5 @@ class OneTimeLogger:
             self.seen_messages.add(msg)
 
 base_logger = logging.getLogger("BaseAgent")
+logging.basicConfig(level=logging.INFO, format="%(asctime)s | %(levelname)s | %(message)s")
 one_time_logger = OneTimeLogger(base_logger)

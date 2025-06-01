@@ -1,3 +1,5 @@
+## 학습용 프로젝트이고, 현재는 보류된 프로젝트입니다.
+
 # Multi AI AGENT Quent Manager
 
 이 서버 프로그램은 독학으로 AI, 특히 Multi AI Agent를 학습하고 구현하며 기초를 다지고,  

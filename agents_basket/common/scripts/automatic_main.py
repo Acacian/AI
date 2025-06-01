@@ -8,14 +8,15 @@ if __name__ == "__main__":
     import traceback
     from .agent import {class_name}
 
-    if len(sys.argv) != 2:
-        print("⚠️ 사용법: python -m {module_path} <config_path>", flush=True)
+    if len(sys.argv) != 3:
+        print("⚠️ 사용법: python -m {module_path} <config_path> <config_key>", flush=True)
         sys.exit(1)
 
     try:
         config_path = sys.argv[1]
-        print(f"🚀 Agent 시작: {{config_path}}", flush=True)
-        agent = {class_name}(config_path)
+        config_key = sys.argv[2]
+        print(f"🚀 Agent 시작: {{config_path}} (key: {{config_key}})", flush=True)
+        agent = {class_name}(config_path, config_key)
         agent.run()
     except Exception as e:
         print(f"❌ 에이전트 실행 중 예외 발생: {{e}}", flush=True)
@@ -29,7 +30,7 @@ for subdir in os.listdir(base_dir):
         with open(agent_path, "r") as f:
             lines = f.read()
         if "__main__" in lines:
-            continue  # 이미 있음
+            continue 
 
         class_name = None
         for line in lines.splitlines():
